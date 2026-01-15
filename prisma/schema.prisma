@@ -1,0 +1,234 @@
+// SponsorMatch Australia - Database Schema
+// Learn more about Prisma schema: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String?
+  name          String?
+  image         String?
+
+  // Club information
+  clubName      String?
+  clubSport     String?
+  clubAddress   String?
+  clubLatitude  Float?
+  clubLongitude Float?
+
+  // Subscription & usage
+  subscriptionTier  SubscriptionTier @default(FREE)
+  emailsSent        Int              @default(0)
+  stripeCustomerId  String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  searches      Search[]
+  emailOutreach EmailOutreach[]
+  payments      Payment[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER    // 50 emails/month
+  PRO        // 200 emails/month
+  UNLIMITED  // Unlimited emails
+}
+
+model Search {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  searchAddress   String
+  searchLatitude  Float
+  searchLongitude Float
+  radiusKm        Float    @default(10)
+
+  clubsFound      Int      @default(0)
+  sponsorsFound   Int      @default(0)
+
+  createdAt   DateTime @default(now())
+
+  results     SearchResult[]
+}
+
+model SearchResult {
+  id        String   @id @default(cuid())
+  searchId  String
+  search    Search   @relation(fields: [searchId], references: [id])
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id])
+
+  distanceKm Float
+
+  createdAt DateTime @default(now())
+}
+
+model Club {
+  id          String   @id @default(cuid())
+
+  name        String
+  sport       String?   // e.g., "AFL", "Soccer", "Tennis", "Cricket"
+  address     String?
+  suburb      String?
+  state       String?   // VIC, NSW, QLD, etc.
+  postcode    String?
+  latitude    Float?
+  longitude   Float?
+
+  website     String?
+  phone       String?
+  email       String?
+
+  // Data source tracking
+  googlePlaceId String?  @unique
+  lastScraped   DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sponsors      ClubSponsor[]
+  searchResults SearchResult[]
+}
+
+model Sponsor {
+  id          String   @id @default(cuid())
+
+  companyName String
+  industry    String?
+  website     String?
+
+  // Contact details
+  contactName   String?
+  contactEmail  String?
+  contactPhone  String?
+  contactRole   String?  // e.g., "Marketing Manager", "Owner"
+
+  // Verification status
+  emailVerified Boolean  @default(false)
+  lastVerified  DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clubSponsors  ClubSponsor[]
+  emailOutreach EmailOutreach[]
+
+  @@unique([companyName, website])
+}
+
+model ClubSponsor {
+  id          String   @id @default(cuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id])
+  sponsorId   String
+  sponsor     Sponsor  @relation(fields: [sponsorId], references: [id])
+
+  sponsorshipType String?  // e.g., "Major", "Gold", "Silver", "Bronze", "Community"
+  seasonYear      Int      // e.g., 2024, 2023, 2022
+  isCurrentSeason Boolean  @default(false)
+
+  // Where we found this information
+  sourceUrl   String?
+
+  createdAt   DateTime @default(now())
+
+  @@unique([clubId, sponsorId, seasonYear])
+}
+
+model EmailOutreach {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  sponsorId   String
+  sponsor     Sponsor  @relation(fields: [sponsorId], references: [id])
+
+  subject     String
+  body        String   @db.Text
+
+  status      EmailStatus @default(DRAFT)
+  sentAt      DateTime?
+  openedAt    DateTime?
+  repliedAt   DateTime?
+
+  // Track which search/context this came from
+  sourceClubName String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum EmailStatus {
+  DRAFT
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  REPLIED
+  BOUNCED
+  FAILED
+}
+
+model Payment {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+
+  stripePaymentId String   @unique
+  amount          Int      // in cents
+  currency        String   @default("AUD")
+  status          String
+
+  // What they paid for
+  tier            SubscriptionTier?
+  emailCredits    Int?
+
+  createdAt       DateTime @default(now())
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
