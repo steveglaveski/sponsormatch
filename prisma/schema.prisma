@@ -29,6 +29,12 @@ model User {
   emailsSent        Int              @default(0)
   stripeCustomerId  String?
 
+  // Gmail integration for sending emails
+  gmailConnected     Boolean  @default(false)
+  gmailEmail         String?  // The Gmail address to send from
+  gmailRefreshToken  String?  @db.Text  // OAuth refresh token
+  gmailTokenExpiry   DateTime?
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

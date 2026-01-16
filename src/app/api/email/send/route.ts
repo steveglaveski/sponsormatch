@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendEmail, isValidEmail } from "@/services/email-sender";
+import { sendEmailViaGmail } from "@/services/gmail-sender";
 import { canSendEmail, getRemainingEmails, type SubscriptionTier } from "@/lib/subscription";
 
 const sendSchema = z.object({
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get user with subscription info
+    // Get user with subscription info and Gmail status
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -44,6 +45,8 @@ export async function POST(request: Request) {
         clubName: true,
         subscriptionTier: true,
         emailsSent: true,
+        gmailConnected: true,
+        gmailEmail: true,
       },
     });
 
@@ -90,14 +93,41 @@ export async function POST(request: Request) {
       },
     });
 
-    // Send email
-    const replyTo = user.email || "noreply@sponsormatch.com.au";
-    const result = await sendEmail({
-      to: recipientEmail,
-      replyTo,
-      subject,
-      body: emailBody,
-    });
+    // Send email - use Gmail if connected, otherwise fall back to Resend
+    let result;
+    let sentViaGmail = false;
+
+    if (user.gmailConnected && user.gmailEmail) {
+      // Send via user's Gmail account
+      result = await sendEmailViaGmail({
+        userId: user.id,
+        to: recipientEmail,
+        subject,
+        body: emailBody,
+      });
+      sentViaGmail = result.success;
+
+      // If Gmail failed due to auth issues, fall back to Resend
+      if (!result.success && result.error?.includes("reconnect")) {
+        console.log("Gmail auth failed, falling back to Resend");
+        const replyTo = user.email || "noreply@sponsormatch.com.au";
+        result = await sendEmail({
+          to: recipientEmail,
+          replyTo,
+          subject,
+          body: emailBody,
+        });
+      }
+    } else {
+      // Send via Resend with reply-to
+      const replyTo = user.email || "noreply@sponsormatch.com.au";
+      result = await sendEmail({
+        to: recipientEmail,
+        replyTo,
+        subject,
+        body: emailBody,
+      });
+    }
 
     if (!result.success) {
       // Update record as failed
@@ -137,6 +167,8 @@ export async function POST(request: Request) {
       emailId: emailRecord.id,
       messageId: result.messageId,
       remaining,
+      sentVia: sentViaGmail ? "gmail" : "resend",
+      sentFrom: sentViaGmail ? user.gmailEmail : "SponsorMatch",
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

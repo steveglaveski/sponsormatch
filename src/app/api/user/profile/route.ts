@@ -35,6 +35,8 @@ export async function GET() {
         emailsSent: true,
         stripeCustomerId: true,
         createdAt: true,
+        gmailConnected: true,
+        gmailEmail: true,
       },
     });
 

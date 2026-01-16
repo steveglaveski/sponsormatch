@@ -116,7 +116,82 @@ export async function searchNearbyClubs(
   }
 
   // Sort by distance
-  return allResults.sort((a, b) => a.distanceKm - b.distanceKm);
+  const sortedResults = allResults.sort((a, b) => a.distanceKm - b.distanceKm);
+
+  // Fetch detailed info (website, phone) for each club
+  // Process in batches to avoid overwhelming the API
+  const enrichedResults = await enrichWithPlaceDetails(sortedResults, apiKey);
+
+  return enrichedResults;
+}
+
+/**
+ * Enrich place results with detailed information (website, phone) from Place Details API
+ */
+async function enrichWithPlaceDetails(
+  places: PlaceResult[],
+  apiKey: string
+): Promise<PlaceResult[]> {
+  const BATCH_SIZE = 5;
+  const enrichedResults: PlaceResult[] = [];
+
+  for (let i = 0; i < places.length; i += BATCH_SIZE) {
+    const batch = places.slice(i, i + BATCH_SIZE);
+
+    const batchResults = await Promise.all(
+      batch.map(async (place) => {
+        try {
+          const details = await fetchPlaceDetails(place.placeId, apiKey);
+          if (details) {
+            return {
+              ...place,
+              website: details.website || place.website,
+              phone: details.phone || place.phone,
+              address: details.address || place.address,
+            };
+          }
+        } catch (error) {
+          console.error(`Error fetching details for ${place.name}:`, error);
+        }
+        return place;
+      })
+    );
+
+    enrichedResults.push(...batchResults);
+  }
+
+  return enrichedResults;
+}
+
+/**
+ * Fetch place details from Google Place Details API
+ */
+async function fetchPlaceDetails(
+  placeId: string,
+  apiKey: string
+): Promise<{ website?: string; phone?: string; address?: string } | null> {
+  const url = new URL(
+    "https://maps.googleapis.com/maps/api/place/details/json"
+  );
+  url.searchParams.set("place_id", placeId);
+  url.searchParams.set(
+    "fields",
+    "website,formatted_phone_number,formatted_address"
+  );
+  url.searchParams.set("key", apiKey);
+
+  const response = await fetch(url.toString());
+  const data = await response.json();
+
+  if (data.status !== "OK") {
+    return null;
+  }
+
+  return {
+    website: data.result?.website,
+    phone: data.result?.formatted_phone_number,
+    address: data.result?.formatted_address,
+  };
 }
 
 async function searchWithKeyword(

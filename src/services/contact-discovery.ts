@@ -12,6 +12,43 @@
 
 import * as cheerio from "cheerio";
 
+/**
+ * Decode URL-encoded text and clean it up
+ * Handles %20 -> space, %26 -> &, etc.
+ */
+function cleanAndDecodeText(text: string): string {
+  if (!text) return "";
+
+  let decoded = text;
+  try {
+    // Handle double-encoding by decoding until stable
+    let previous = "";
+    let iterations = 0;
+    while (decoded !== previous && iterations < 5) {
+      previous = decoded;
+      decoded = decodeURIComponent(decoded);
+      iterations++;
+    }
+  } catch {
+    // If decodeURIComponent fails, try manual replacement of common encodings
+    decoded = text
+      .replace(/%20/g, " ")
+      .replace(/%26/g, "&")
+      .replace(/%27/g, "'")
+      .replace(/%28/g, "(")
+      .replace(/%29/g, ")")
+      .replace(/%2C/g, ",")
+      .replace(/%2F/g, "/")
+      .replace(/%3A/g, ":")
+      .replace(/%3B/g, ";")
+      .replace(/%40/g, "@")
+      .replace(/%2B/g, "+")
+      .replace(/%25/g, "%");
+  }
+
+  return decoded.trim();
+}
+
 export interface ContactInfo {
   email?: string;
   phone?: string;
@@ -68,9 +105,12 @@ export async function discoverContacts(
     hasSocialLinks: false,
   };
 
+  // Decode URL-encoded characters in company name
+  const decodedCompanyName = cleanAndDecodeText(companyName);
+
   if (!website) {
     // Generate pattern-based emails only
-    const domain = guessDomain(companyName);
+    const domain = guessDomain(decodedCompanyName);
     if (domain) {
       const patternEmails = generateEmailPatterns(domain);
       patternEmails.forEach((email) => {
@@ -133,7 +173,7 @@ export async function discoverContacts(
     console.error("Contact discovery error:", error);
 
     // Fallback to pattern-based emails
-    const domain = guessDomain(companyName);
+    const domain = guessDomain(decodedCompanyName);
     if (domain) {
       const patternEmails = generateEmailPatterns(domain);
       patternEmails.slice(0, 3).forEach((email) => {
@@ -271,12 +311,16 @@ function generateEmailPatterns(domain: string): string[] {
 }
 
 function guessDomain(companyName: string): string | null {
+  // First decode any URL-encoded characters (e.g., %20 -> space)
+  // This prevents "Genis%20Steel" from becoming "genis20steel"
+  const decoded = cleanAndDecodeText(companyName);
+
   // Convert company name to likely domain
-  const cleaned = companyName
+  const cleaned = decoded
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, "")
     .replace(/\s+(pty|ltd|limited|inc|corp|co|australia|aus)$/i, "")
-    .replace(/\s+/g, "")
+    .replace(/\s+/g, "") // Now spaces become nothing, not "20"
     .trim();
 
   if (cleaned.length < 3) return null;

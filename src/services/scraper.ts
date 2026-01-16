@@ -19,7 +19,44 @@ export interface ScrapeResult {
 const lastRequestTime = new Map<string, number>();
 
 /**
- * Rate-limited fetch that respects robots.txt guidelines
+ * Decode URL-encoded text and clean it up
+ * Handles %20 -> space, %26 -> &, etc.
+ */
+function cleanAndDecodeText(text: string): string {
+  if (!text) return "";
+
+  let decoded = text;
+  try {
+    // Handle double-encoding by decoding until stable
+    let previous = "";
+    let iterations = 0;
+    while (decoded !== previous && iterations < 5) {
+      previous = decoded;
+      decoded = decodeURIComponent(decoded);
+      iterations++;
+    }
+  } catch {
+    // If decodeURIComponent fails, try manual replacement of common encodings
+    decoded = text
+      .replace(/%20/g, " ")
+      .replace(/%26/g, "&")
+      .replace(/%27/g, "'")
+      .replace(/%28/g, "(")
+      .replace(/%29/g, ")")
+      .replace(/%2C/g, ",")
+      .replace(/%2F/g, "/")
+      .replace(/%3A/g, ":")
+      .replace(/%3B/g, ";")
+      .replace(/%40/g, "@")
+      .replace(/%2B/g, "+")
+      .replace(/%25/g, "%");
+  }
+
+  return decoded.trim();
+}
+
+/**
+ * Rate-limited fetch with browser-like headers
  */
 async function rateLimitedFetch(url: string): Promise<Response | null> {
   try {
@@ -37,20 +74,34 @@ async function rateLimitedFetch(url: string): Promise<Response | null> {
 
     lastRequestTime.set(domain, Date.now());
 
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "SponsorMatch Bot/1.0 (https://sponsormatch.com.au; contact@sponsormatch.com.au)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      signal: AbortSignal.timeout(10000), // 10 second timeout
-    });
-
-    if (!response.ok) {
-      return null;
+    // Try HTTPS first, then HTTP if that fails
+    const urlsToTry = [url];
+    if (url.startsWith("http://")) {
+      urlsToTry.unshift(url.replace("http://", "https://"));
     }
 
-    return response;
+    for (const tryUrl of urlsToTry) {
+      try {
+        const response = await fetch(tryUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          signal: AbortSignal.timeout(30000), // 30 second timeout
+          redirect: "follow",
+        });
+
+        if (response.ok) {
+          return response;
+        }
+      } catch {
+        // Try next URL
+        continue;
+      }
+    }
+
+    return null;
   } catch (error) {
     console.error(`Failed to fetch ${url}:`, error);
     return null;
@@ -117,6 +168,349 @@ async function findSponsorPages(baseUrl: string): Promise<string[]> {
   return sponsorPages.slice(0, 5); // Limit to 5 pages max
 }
 
+// Common words/patterns that indicate this is NOT a sponsor name
+const NON_SPONSOR_PATTERNS = [
+  // Generic/placeholder terms
+  /^placeholder$/i,
+  /^default$/i,
+  /^blank$/i,
+  /^img\d*$/i,
+  /^image\d*$/i,
+  /^photo\d*$/i,
+  /^pic\d*$/i,
+  /^untitled/i,
+  /^screenshot/i,
+  /^screen shot/i,
+  /^dsc\d/i,
+  /^img_\d/i,
+  /^photo_\d/i,
+  /whatsapp/i,
+  /^wa\d/i,
+
+  // Slogans and motivational phrases
+  /whatever\s*it\s*takes/i,
+  /^(be|go|get|let|just|we|our|the|your|my)\s/i,
+  /^never\s/i,
+  /^always\s/i,
+  /together/i,
+  /^believe/i,
+  /^dream/i,
+  /^play\s/i,
+  /^win\s/i,
+  /^team\s/i,
+
+  // UI/Navigation elements
+  /^contact$/i,
+  /^contact\s*us$/i,
+  /^about$/i,
+  /^about\s*us$/i,
+  /^home$/i,
+  /^menu$/i,
+  /^nav$/i,
+  /^header$/i,
+  /^footer$/i,
+  /^banner$/i,
+  /^button$/i,
+  /^icon$/i,
+  /^arrow$/i,
+  /^close$/i,
+  /^open$/i,
+  /^search$/i,
+  /^login$/i,
+  /^log\s*in$/i,
+  /^signup$/i,
+  /^sign\s*up$/i,
+  /^sign\s*in$/i,
+  /^register$/i,
+  /^subscribe$/i,
+  /^click\s*here$/i,
+  /^read\s*more$/i,
+  /^learn\s*more$/i,
+  /^view\s*more$/i,
+  /^view\s*all$/i,
+  /^see\s*more$/i,
+  /^see\s*all$/i,
+  /^more\s*info$/i,
+  /^next$/i,
+  /^previous$/i,
+  /^prev$/i,
+  /^back$/i,
+  /^forward$/i,
+  /^submit$/i,
+  /^send$/i,
+  /^download$/i,
+  /^upload$/i,
+  /^share$/i,
+  /^print$/i,
+  /^email\s*us$/i,
+
+  // Common personal names (first names only - likely staff photos)
+  /^(john|jane|mike|michael|david|sarah|emma|sophie|james|robert|mary|lisa|anna|tom|chris|dan|matt|ben|sam|alex|kate|amy|luke|mark|paul|peter|steve|brian|kevin|andrew|ryan|josh|nick|adam|jack|max|joe|tim|ian|alan|gary|simon|tony|carl|lee|martin|neil|sean|craig|scott|dean|ross|grant|wayne|troy|brad|chad|greg|darren|barry|keith|glen|stuart|derek|trevor|phillip|graham|russell|roger|colin)$/i,
+
+  // Generic descriptive terms
+  /^logo$/i,
+  /^logos?$/i,
+  /^sponsor$/i,
+  /^sponsors$/i,
+  /^partner$/i,
+  /^partners$/i,
+  /^supporter$/i,
+  /^supporters$/i,
+  /^our\s*sponsors$/i,
+  /^our\s*partners$/i,
+  /^our\s*supporters$/i,
+  /^member$/i,
+  /^team$/i,
+  /^staff$/i,
+  /^player$/i,
+  /^coach$/i,
+  /^club$/i,
+  /^news$/i,
+  /^event$/i,
+  /^gallery$/i,
+  /^slide\d*$/i,
+  /^carousel/i,
+  /^background/i,
+  /^hero$/i,
+  /^feature/i,
+  /^advertisement$/i,
+  /^ad$/i,
+  /^promo$/i,
+  /^promotion$/i,
+
+  // Tier labels that should not be sponsor names
+  /^major\s*(sponsor|partner)?$/i,
+  /^principal\s*(sponsor|partner)?$/i,
+  /^gold\s*(sponsor|partner)?$/i,
+  /^silver\s*(sponsor|partner)?$/i,
+  /^bronze\s*(sponsor|partner)?$/i,
+  /^platinum\s*(sponsor|partner)?$/i,
+  /^community\s*(sponsor|partner)?$/i,
+  /^official\s*(sponsor|partner)?$/i,
+  /^naming\s*rights$/i,
+  /^title\s*sponsor$/i,
+
+  // File/technical terms
+  /^cropped/i,
+  /^scaled/i,
+  /^resized/i,
+  /^copy$/i,
+  /^final$/i,
+  /^edit$/i,
+  /^version/i,
+  /^\d+$/,  // Just numbers
+  /^[a-z]$/i,  // Single letters
+  /^[a-f0-9]{8,}$/i,  // Hashes/UUIDs
+  /\d{4}\s*\d{2}\s*\d{2}/,  // Date patterns like 2025 03 18
+  /at\d{2}\.\d{2}/i,  // Time patterns like at18.45
+  /^\d+x\d+$/,  // Dimensions like 150x150
+  /\.(jpg|jpeg|png|gif|svg|webp|pdf)$/i,  // File extensions
+
+  // Website/social media elements
+  /^facebook$/i,
+  /^instagram$/i,
+  /^twitter$/i,
+  /^linkedin$/i,
+  /^youtube$/i,
+  /^tiktok$/i,
+  /^snapchat$/i,
+  /^pinterest$/i,
+  /^x\.com$/i,
+  /^follow\s*us/i,
+  /^like$/i,
+  /^comment$/i,
+
+  // Common website footer elements
+  /^copyright/i,
+  /^all\s*rights\s*reserved/i,
+  /^privacy\s*policy/i,
+  /^terms\s*(of\s*service|and\s*conditions)?$/i,
+  /^cookie\s*policy/i,
+  /^powered\s*by/i,
+  /^built\s*by/i,
+  /^designed\s*by/i,
+  /^developed\s*by/i,
+
+  // Sports/club related non-sponsor terms
+  /^fixture/i,
+  /^fixtures$/i,
+  /^result/i,
+  /^results$/i,
+  /^ladder$/i,
+  /^schedule$/i,
+  /^training/i,
+  /^registration/i,
+  /^membership/i,
+  /^juniors?$/i,
+  /^seniors?$/i,
+  /^womens?$/i,
+  /^mens?$/i,
+  /^under\s*\d/i,
+  /^u\d{1,2}s?$/i,
+
+  // Misc noise
+  /^undefined$/i,
+  /^null$/i,
+  /^n\/a$/i,
+  /^tba$/i,
+  /^tbc$/i,
+  /^coming\s*soon$/i,
+  /^no\s*name$/i,
+];
+
+// Common business suffixes that indicate a legitimate company name
+const BUSINESS_SUFFIXES = [
+  /\b(pty|ltd|inc|corp|co|group|services|solutions|industries|australia|au)\.?$/i,
+  /\b(construction|builders?|building|homes?|properties|property|real\s*estate)$/i,
+  /\b(electrical|plumbing|mechanical|engineering|consulting|consulting)$/i,
+  /\b(logistics|transport|auto|motors?|automotive|cars?)$/i,
+  /\b(finance|financial|accounting|legal|lawyers?|law)$/i,
+  /\b(cafe|restaurant|bar|hotel|catering|food)$/i,
+  /\b(gym|fitness|health|medical|dental|pharmacy|chemist)$/i,
+  /\b(print|printing|graphics|design|media|studio)$/i,
+  /\b(steel|metal|concrete|glass|timber|supplies)$/i,
+  /\b(wholesale|retail|store|shop|mart|warehouse)$/i,
+];
+
+/**
+ * Check if a name looks like a valid sponsor/company name
+ */
+function isValidSponsorName(name: string): boolean {
+  if (!name || name.length < 2 || name.length > 100) {
+    return false;
+  }
+
+  const trimmed = name.trim();
+
+  // Check against blocklist patterns
+  for (const pattern of NON_SPONSOR_PATTERNS) {
+    if (pattern.test(trimmed)) {
+      return false;
+    }
+  }
+
+  // Must have at least one letter
+  if (!/[a-zA-Z]/.test(trimmed)) {
+    return false;
+  }
+
+  // Reject if it looks like a filename (contains file extensions)
+  if (/\.(jpg|jpeg|png|gif|webp|svg|pdf|doc|html|php|aspx)$/i.test(trimmed)) {
+    return false;
+  }
+
+  // Reject camelCase or internal caps that look like code/filenames (e.g., "WhatsAppImage")
+  if (/[a-z][A-Z]/.test(trimmed) && !trimmed.includes(" ")) {
+    return false;
+  }
+
+  // Reject if it's just a URL
+  if (/^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)) {
+    return false;
+  }
+
+  // Reject if it looks like a file path
+  if (trimmed.includes("/") && !trimmed.includes(" ")) {
+    return false;
+  }
+
+  // Reject if mostly numbers (less than 30% letters)
+  const letterCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
+  if (letterCount < trimmed.length * 0.3) {
+    return false;
+  }
+
+  // Reject common single words that are not company names
+  const singleWordBlacklist = [
+    "the", "and", "or", "but", "for", "with", "from", "this", "that",
+    "are", "was", "were", "been", "being", "have", "has", "had",
+    "new", "view", "more", "all", "click", "here", "now", "get",
+  ];
+  if (singleWordBlacklist.includes(trimmed.toLowerCase())) {
+    return false;
+  }
+
+  // Reject if it's just a single short word without business indicators
+  const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+  if (words.length === 1) {
+    // Single word - must be at least 4 chars
+    if (trimmed.length < 4) {
+      return false;
+    }
+    // Single lowercase word under 8 chars is suspicious (e.g., "vaitale")
+    if (trimmed === trimmed.toLowerCase() && trimmed.length < 8) {
+      // Unless it has a business suffix
+      const hasBusinessSuffix = BUSINESS_SUFFIXES.some(p => p.test(trimmed));
+      if (!hasBusinessSuffix) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Extract sponsor name from image - tries alt, title, then filename
+ * Cleans the name to remove prefixes like "Logo of partner"
+ */
+function extractSponsorNameFromImage(
+  $: cheerio.CheerioAPI,
+  img: ReturnType<typeof $>
+): string | null {
+  // Try alt text first - clean it before validating
+  const alt = img.attr("alt")?.trim();
+  if (alt) {
+    const cleanedAlt = cleanSponsorName(alt);
+    if (cleanedAlt && isValidSponsorName(cleanedAlt)) {
+      return cleanedAlt;
+    }
+  }
+
+  // Try title attribute
+  const title = img.attr("title")?.trim();
+  if (title) {
+    const cleanedTitle = cleanSponsorName(title);
+    if (cleanedTitle && isValidSponsorName(cleanedTitle)) {
+      return cleanedTitle;
+    }
+  }
+
+  // Try to extract from filename (but be more strict)
+  const src = img.attr("src") || "";
+  if (src) {
+    try {
+      const url = new URL(src, "https://example.com");
+      const pathname = url.pathname;
+      const filename = pathname.split("/").pop() || "";
+      // Remove extension and size suffixes like -150x150
+      let nameFromFile = filename
+        .replace(/\.[^.]+$/, "") // remove extension
+        .replace(/-\d+x\d+$/, "") // remove size suffix
+        .replace(/[-_]/g, " ") // convert dashes/underscores to spaces
+        .replace(/\s+/g, " ") // normalize spaces
+        .trim();
+
+      // Clean the filename-derived name
+      nameFromFile = cleanSponsorName(nameFromFile);
+
+      // Only accept filename-based names if they look like company names
+      // (at least 2 words or a known company pattern)
+      if (nameFromFile && isValidSponsorName(nameFromFile)) {
+        // Extra validation for filename-derived names: prefer multi-word or known patterns
+        const words = nameFromFile.split(" ").filter(w => w.length > 1);
+        if (words.length >= 2 || nameFromFile.length >= 6) {
+          return nameFromFile;
+        }
+      }
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+
+  return null;
+}
+
 /**
  * Extract sponsors from a single page
  */
@@ -135,39 +529,119 @@ async function extractSponsorsFromPage(
     // Strategy 1: Look for sponsor sections with images
     const sponsorSections = $(
       '[class*="sponsor"], [class*="partner"], [id*="sponsor"], [id*="partner"], ' +
-        '[class*="Sponsor"], [class*="Partner"]'
+        '[class*="Sponsor"], [class*="Partner"], ' +
+        '[class*="logo-sponsor"], [class*="logo-partner"], ' +
+        '.sponsor, .partner, .sponsors, .partners'
     );
 
     sponsorSections.find("img").each((_, element) => {
       const img = $(element);
-      const alt = img.attr("alt") || "";
       const src = img.attr("src") || "";
       const parentLink = img.closest("a");
       const href = parentLink.attr("href");
 
-      if (alt && alt.length > 2 && alt.length < 100) {
-        // Check if it's not a generic image
-        const lowerAlt = alt.toLowerCase();
-        if (
-          !lowerAlt.includes("logo") ||
-          lowerAlt.includes("sponsor") ||
-          lowerAlt.includes("partner")
-        ) {
-          const sponsor: ScrapedSponsor = {
-            name: cleanSponsorName(alt),
-            sourceUrl: url,
-          };
+      const name = extractSponsorNameFromImage($, img);
+      if (name) {
+        const sponsor: ScrapedSponsor = {
+          name: cleanSponsorName(name),
+          sourceUrl: url,
+        };
 
-          if (src) {
-            sponsor.logoUrl = resolveUrl(src, url);
-          }
-
-          if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
-            sponsor.websiteUrl = resolveUrl(href, url);
-          }
-
-          sponsors.push(sponsor);
+        if (src) {
+          sponsor.logoUrl = resolveUrl(src, url);
         }
+
+        if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
+          sponsor.websiteUrl = resolveUrl(href, url);
+        }
+
+        sponsors.push(sponsor);
+      }
+    });
+
+    // Strategy 1b: Sponsor cards with text labels (h5, h4, h3, p tags)
+    // Common pattern: image + company name in heading below
+    // Only match if we're clearly inside a sponsors/partners section
+    $(
+      '.sponsor, .partner, [class*="sponsor-card"], [class*="partner-card"], ' +
+        '[class*="sponsor-item"], [class*="partner-item"], ' +
+        '[class*="sponsor-logo"], [class*="partner-logo"]'
+    ).each((_, element) => {
+      const $card = $(element);
+
+      // Validate context - check if this card is inside a sponsor-related section
+      // by looking at parent elements and nearby headings
+      const parentClasses = $card.parents().map((_, el) => $(el).attr("class") || "").get().join(" ").toLowerCase();
+      const isInSponsorSection = /sponsor|partner|supporter|backer/i.test(parentClasses);
+
+      // Also check if there's a sponsor-related heading nearby
+      const nearbyText = $card.parent().prev("h1, h2, h3, h4").text().toLowerCase();
+      const hasNearbyHeading = /sponsor|partner|supporter/i.test(nearbyText);
+
+      // Skip if not clearly in a sponsor context
+      if (!isInSponsorSection && !hasNearbyHeading) {
+        // Only proceed if the card itself has very sponsor-specific class
+        const cardClass = ($card.attr("class") || "").toLowerCase();
+        if (!/sponsor|partner/.test(cardClass)) {
+          return;
+        }
+      }
+
+      // Look for text in common heading/label elements
+      const textEl = $card.find("h5, h4, h3, h6, p.name, span.name, .sponsor-name, .partner-name").first();
+      const text = textEl.text()?.trim();
+
+      if (text && isValidSponsorName(text)) {
+        const img = $card.find("img").first();
+        const link = $card.find("a").first();
+
+        const sponsor: ScrapedSponsor = {
+          name: cleanSponsorName(text),
+          sourceUrl: url,
+        };
+
+        if (img.attr("src")) {
+          sponsor.logoUrl = resolveUrl(img.attr("src")!, url);
+        }
+
+        const href = link.attr("href");
+        if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
+          sponsor.websiteUrl = resolveUrl(href, url);
+        }
+
+        sponsors.push(sponsor);
+      }
+    });
+
+    // Strategy 1c: WordPress Visual Composer pattern (.wpb_single_image in sponsor rows)
+    $(
+      '.sponsor-logos .wpb_single_image img, ' +
+        '.partner-logos .wpb_single_image img, ' +
+        '[class*="sponsor"] .wpb_single_image img, ' +
+        '[class*="partner"] .wpb_single_image img, ' +
+        '.logo-sponsors img, .logo-partners img'
+    ).each((_, element) => {
+      const img = $(element);
+      const src = img.attr("src") || "";
+      const parentLink = img.closest("a");
+      const href = parentLink.attr("href");
+
+      const name = extractSponsorNameFromImage($, img);
+      if (name) {
+        const sponsor: ScrapedSponsor = {
+          name: cleanSponsorName(name),
+          sourceUrl: url,
+        };
+
+        if (src) {
+          sponsor.logoUrl = resolveUrl(src, url);
+        }
+
+        if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
+          sponsor.websiteUrl = resolveUrl(href, url);
+        }
+
+        sponsors.push(sponsor);
       }
     });
 
@@ -236,13 +710,13 @@ async function extractSponsorsFromPage(
           // Look for images or links in this section
           next.find("img").each((_, img) => {
             const $img = $(img);
-            const alt = $img.attr("alt");
             const src = $img.attr("src");
             const parentLink = $img.closest("a");
 
-            if (alt && alt.length > 2) {
+            const name = extractSponsorNameFromImage($, $img);
+            if (name) {
               const sponsor: ScrapedSponsor = {
-                name: cleanSponsorName(alt),
+                name: cleanSponsorName(name),
                 tier,
                 sourceUrl: url,
               };
@@ -272,12 +746,12 @@ async function extractSponsorsFromPage(
         const $el = $(element);
 
         if ($el.is("img")) {
-          const alt = $el.attr("alt");
           const src = $el.attr("src");
+          const name = extractSponsorNameFromImage($, $el);
 
-          if (alt && alt.length > 2 && alt.length < 100) {
+          if (name) {
             sponsors.push({
-              name: cleanSponsorName(alt),
+              name: cleanSponsorName(name),
               logoUrl: src ? resolveUrl(src, url) : undefined,
               sourceUrl: url,
             });
@@ -287,9 +761,15 @@ async function extractSponsorsFromPage(
           const href = $el.attr("href");
           const img = $el.find("img").first();
 
-          if (text && text.length > 2 && text.length < 100) {
+          // Try link text first, then image inside the link
+          let name = text && text.length > 2 && text.length < 100 ? text : null;
+          if (!name && img.length) {
+            name = extractSponsorNameFromImage($, img);
+          }
+
+          if (name) {
             sponsors.push({
-              name: cleanSponsorName(text),
+              name: cleanSponsorName(name),
               websiteUrl: href ? resolveUrl(href, url) : undefined,
               logoUrl: img.attr("src")
                 ? resolveUrl(img.attr("src")!, url)
@@ -297,6 +777,30 @@ async function extractSponsorsFromPage(
               sourceUrl: url,
             });
           }
+        }
+      });
+
+    // Strategy 5: Look for figure elements with images (common WordPress pattern)
+    $("figure.wpb_wrapper, figure.wp-block-image")
+      .closest('[class*="sponsor"], [class*="partner"], [class*="logo"]')
+      .find("img")
+      .each((_, element) => {
+        const img = $(element);
+        const src = img.attr("src") || "";
+        const parentLink = img.closest("a");
+        const href = parentLink.attr("href");
+
+        const name = extractSponsorNameFromImage($, img);
+        if (name) {
+          sponsors.push({
+            name: cleanSponsorName(name),
+            logoUrl: src ? resolveUrl(src, url) : undefined,
+            websiteUrl:
+              href && !href.startsWith("#") && !href.startsWith("javascript:")
+                ? resolveUrl(href, url)
+                : undefined,
+            sourceUrl: url,
+          });
         }
       });
   } catch (error) {
@@ -307,15 +811,86 @@ async function extractSponsorsFromPage(
 }
 
 /**
- * Clean up sponsor name
+ * Clean raw sponsor text to extract just the company name
+ * Removes common prefixes like "Logo of partner Mission Foods" → "Mission Foods"
+ * Also decodes URL-encoded characters like %20 → space
  */
-function cleanSponsorName(name: string): string {
-  return name
-    .replace(/\s+/g, " ")
-    .replace(/logo$/i, "")
-    .replace(/sponsor$/i, "")
-    .replace(/partner$/i, "")
-    .trim();
+function cleanSponsorName(rawText: string): string {
+  if (!rawText || typeof rawText !== "string") return "";
+
+  // First decode any URL-encoded characters (e.g., %20 -> space)
+  let cleaned = cleanAndDecodeText(rawText);
+
+  // Remove common prefixes from alt text (order matters - longer patterns first)
+  const prefixPatterns = [
+    /^logo\s+of\s+(partner|sponsor|our\s+partner|our\s+sponsor)\s+/i,
+    /^(major|principal|gold|silver|bronze|platinum|community|official)\s+(partner|sponsor)\s+logo\s*(of)?\s*/i,
+    /^(major|principal|gold|silver|bronze|platinum|community|official)\s+(partner|sponsor)\s+/i,
+    /^logo\s*(of|for)?\s*(partner|sponsor)?\s*/i,
+    /^partner\s*logo\s*(of|for)?\s*/i,
+    /^sponsor\s*logo\s*(of|for)?\s*/i,
+    /^image\s*(of|for)?\s*/i,
+    /^icon\s*(of|for)?\s*/i,
+    /^\d+\s*[-–]\s*/, // Remove leading numbers like "1 - "
+  ];
+
+  for (const pattern of prefixPatterns) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  // Remove common suffixes
+  const suffixPatterns = [
+    /\s*logo$/i,
+    /\s*icon$/i,
+    /\s*image$/i,
+    /\s*-\s*opens?\s*in\s*new\s*(tab|window)$/i,
+    /\s*\(opens?\s*in\s*new\s*(tab|window)\)$/i,
+    /\s*sponsor$/i,
+    /\s*partner$/i,
+  ];
+
+  for (const pattern of suffixPatterns) {
+    cleaned = cleaned.replace(pattern, "");
+  }
+
+  // Normalize whitespace
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+  return cleaned;
+}
+
+/**
+ * Extract sponsor tier from context text (heading, parent element, etc.)
+ */
+function extractTierFromContext(contextText: string): string | null {
+  if (!contextText) return null;
+
+  const lowerContext = contextText.toLowerCase();
+
+  const tierPatterns: { pattern: RegExp; tier: string }[] = [
+    // Major tiers (check more specific patterns first)
+    { pattern: /naming\s*rights|title\s*sponsor/i, tier: "Principal" },
+    { pattern: /principal|headline/i, tier: "Principal" },
+    { pattern: /major|premier/i, tier: "Major" },
+    { pattern: /platinum/i, tier: "Platinum" },
+    { pattern: /gold|primary/i, tier: "Gold" },
+    { pattern: /silver|secondary/i, tier: "Silver" },
+    { pattern: /bronze|tertiary/i, tier: "Bronze" },
+
+    // Partner types
+    { pattern: /official\s*partner/i, tier: "Official Partner" },
+    { pattern: /community\s*(partner|sponsor)/i, tier: "Community" },
+    { pattern: /media\s*partner/i, tier: "Media Partner" },
+    { pattern: /supporter/i, tier: "Supporter" },
+  ];
+
+  for (const { pattern, tier } of tierPatterns) {
+    if (pattern.test(lowerContext)) {
+      return tier;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -393,10 +968,24 @@ export async function scrapeClubSponsors(
       allSponsors.push(...pageSponsors);
     }
 
-    // Deduplicate and filter
-    result.sponsors = deduplicateSponsors(allSponsors).filter(
-      (s) => s.name.length >= 3 && s.name.length <= 100
-    );
+    // Deduplicate and apply final validation filter
+    result.sponsors = deduplicateSponsors(allSponsors).filter((s) => {
+      // Final name validation
+      if (!s.name || s.name.length < 2 || s.name.length > 100) {
+        return false;
+      }
+
+      // Final check: clean the name one more time and validate
+      const cleanedName = cleanSponsorName(s.name);
+      if (!isValidSponsorName(cleanedName)) {
+        return false;
+      }
+
+      // Update the sponsor name to the cleaned version
+      s.name = cleanedName;
+
+      return true;
+    });
   } catch (error) {
     result.errors.push(
       error instanceof Error ? error.message : "Unknown error"

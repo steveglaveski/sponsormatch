@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { scrapeClubSponsors } from "@/services/scraper";
+import { getPlaceDetails } from "@/services/places";
 import { CACHE_TTL_DAYS } from "@/lib/constants";
 
 interface RouteParams {
@@ -41,6 +42,28 @@ export async function GET(request: Request, { params }: RouteParams) {
 
     if (!club) {
       return NextResponse.json({ error: "Club not found" }, { status: 404 });
+    }
+
+    // If club has no website but has a Google Place ID, try to fetch website from Google
+    if (!club.website && club.googlePlaceId) {
+      try {
+        const placeDetails = await getPlaceDetails(club.googlePlaceId);
+        if (placeDetails?.website) {
+          // Update club with website
+          await prisma.club.update({
+            where: { id: clubId },
+            data: {
+              website: placeDetails.website,
+              phone: placeDetails.phone || club.phone,
+            },
+          });
+          // Update local reference
+          club.website = placeDetails.website;
+          club.phone = placeDetails.phone || club.phone;
+        }
+      } catch (error) {
+        console.error("Error fetching place details:", error);
+      }
     }
 
     // Check if we need to scrape (no sponsors or data is stale)
@@ -181,6 +204,25 @@ export async function POST(request: Request, { params }: RouteParams) {
 
     if (!club) {
       return NextResponse.json({ error: "Club not found" }, { status: 404 });
+    }
+
+    // If club has no website but has a Google Place ID, try to fetch website from Google
+    if (!club.website && club.googlePlaceId) {
+      try {
+        const placeDetails = await getPlaceDetails(club.googlePlaceId);
+        if (placeDetails?.website) {
+          await prisma.club.update({
+            where: { id: clubId },
+            data: {
+              website: placeDetails.website,
+              phone: placeDetails.phone || club.phone,
+            },
+          });
+          club.website = placeDetails.website;
+        }
+      } catch (error) {
+        console.error("Error fetching place details:", error);
+      }
     }
 
     if (!club.website) {
