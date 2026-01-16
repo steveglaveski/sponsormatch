@@ -173,12 +173,24 @@ export async function discoverContacts(
 
   console.log(`[ContactDiscovery] Strategy 2: Hunter.io API - hasHighConfidenceEmail=${hasHighConfidenceEmail}, hasApiKey=${!!process.env.HUNTER_API_KEY}`);
 
-  if (!hasHighConfidenceEmail && process.env.HUNTER_API_KEY && website) {
+  if (!hasHighConfidenceEmail && process.env.HUNTER_API_KEY) {
     try {
-      const apiContacts = await findEmailViaHunter(website);
-      console.log(`[ContactDiscovery] Hunter.io found ${apiContacts.length} contacts`);
-      if (apiContacts.length > 0) {
-        contacts.push(...apiContacts);
+      // Try domain search first if we have a website
+      if (website) {
+        const apiContacts = await findEmailViaHunter(website);
+        console.log(`[ContactDiscovery] Hunter.io domain search found ${apiContacts.length} contacts`);
+        if (apiContacts.length > 0) {
+          contacts.push(...apiContacts);
+        }
+      }
+
+      // If still no emails, try company name search
+      if (!contacts.some((c) => c.email)) {
+        const companyContacts = await findEmailByCompanyName(decodedCompanyName);
+        console.log(`[ContactDiscovery] Hunter.io company search found ${companyContacts.length} contacts`);
+        if (companyContacts.length > 0) {
+          contacts.push(...companyContacts);
+        }
       }
     } catch (error) {
       console.error("Hunter.io API error:", error);
@@ -446,6 +458,74 @@ async function findEmailViaHunter(websiteUrl: string): Promise<ContactInfo[]> {
     }
   } catch (error) {
     console.error("Hunter.io API error:", error);
+  }
+
+  return contacts;
+}
+
+/**
+ * Strategy 2b: Use Hunter.io to search by company name (when no website available)
+ */
+async function findEmailByCompanyName(companyName: string): Promise<ContactInfo[]> {
+  const contacts: ContactInfo[] = [];
+
+  if (!process.env.HUNTER_API_KEY || !companyName) return contacts;
+
+  try {
+    // Hunter.io domain search can accept company name to find the domain
+    const response = await fetch(
+      `https://api.hunter.io/v2/domain-search?company=${encodeURIComponent(companyName)}&api_key=${process.env.HUNTER_API_KEY}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    if (!response.ok) {
+      console.error("Hunter.io company search error:", response.status);
+      return contacts;
+    }
+
+    const data = await response.json();
+
+    // If we found a domain, save it for future reference
+    if (data.data?.domain) {
+      console.log(`[ContactDiscovery] Hunter found domain for "${companyName}": ${data.data.domain}`);
+    }
+
+    if (data.data?.emails?.length > 0) {
+      // Prioritize by department
+      const priorityDepts = ["marketing", "executive", "sales", "management"];
+
+      const sorted = [...data.data.emails].sort((a: any, b: any) => {
+        const indexA = priorityDepts.indexOf(a.department || "");
+        const indexB = priorityDepts.indexOf(b.department || "");
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        return (b.confidence || 0) - (a.confidence || 0);
+      });
+
+      // Take top 2 results
+      for (const result of sorted.slice(0, 2)) {
+        const confidence =
+          result.confidence > 80
+            ? "high"
+            : result.confidence > 50
+              ? "medium"
+              : "low";
+
+        contacts.push({
+          email: result.value,
+          contactName:
+            [result.first_name, result.last_name].filter(Boolean).join(" ") ||
+            undefined,
+          contactRole: result.position || undefined,
+          source: "api",
+          confidence,
+          verified: result.verification?.status === "valid",
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Hunter.io company search error:", error);
   }
 
   return contacts;
