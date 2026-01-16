@@ -551,8 +551,10 @@ async function extractSponsorsFromPage(
           sponsor.logoUrl = resolveUrl(src, url);
         }
 
-        if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
-          sponsor.websiteUrl = resolveUrl(href, url);
+        // Only capture external URLs (actual sponsor websites, not club page links)
+        const externalUrl = getExternalUrl(href || "", url);
+        if (externalUrl) {
+          sponsor.websiteUrl = externalUrl;
         }
 
         sponsors.push(sponsor);
@@ -605,8 +607,9 @@ async function extractSponsorsFromPage(
         }
 
         const href = link.attr("href");
-        if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
-          sponsor.websiteUrl = resolveUrl(href, url);
+        const externalUrl = getExternalUrl(href || "", url);
+        if (externalUrl) {
+          sponsor.websiteUrl = externalUrl;
         }
 
         sponsors.push(sponsor);
@@ -637,8 +640,9 @@ async function extractSponsorsFromPage(
           sponsor.logoUrl = resolveUrl(src, url);
         }
 
-        if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
-          sponsor.websiteUrl = resolveUrl(href, url);
+        const externalUrl = getExternalUrl(href || "", url);
+        if (externalUrl) {
+          sponsor.websiteUrl = externalUrl;
         }
 
         sponsors.push(sponsor);
@@ -664,8 +668,9 @@ async function extractSponsorsFromPage(
             sourceUrl: url,
           };
 
-          if (link.attr("href")) {
-            sponsor.websiteUrl = resolveUrl(link.attr("href")!, url);
+          const externalUrl = getExternalUrl(link.attr("href") || "", url);
+          if (externalUrl) {
+            sponsor.websiteUrl = externalUrl;
           }
 
           if (img.attr("src")) {
@@ -722,8 +727,9 @@ async function extractSponsorsFromPage(
               };
 
               if (src) sponsor.logoUrl = resolveUrl(src, url);
-              if (parentLink.attr("href")) {
-                sponsor.websiteUrl = resolveUrl(parentLink.attr("href")!, url);
+              const externalUrl = getExternalUrl(parentLink.attr("href") || "", url);
+              if (externalUrl) {
+                sponsor.websiteUrl = externalUrl;
               }
 
               sponsors.push(sponsor);
@@ -770,7 +776,7 @@ async function extractSponsorsFromPage(
           if (name) {
             sponsors.push({
               name: cleanSponsorName(name),
-              websiteUrl: href ? resolveUrl(href, url) : undefined,
+              websiteUrl: getExternalUrl(href || "", url) || undefined,
               logoUrl: img.attr("src")
                 ? resolveUrl(img.attr("src")!, url)
                 : undefined,
@@ -795,10 +801,7 @@ async function extractSponsorsFromPage(
           sponsors.push({
             name: cleanSponsorName(name),
             logoUrl: src ? resolveUrl(src, url) : undefined,
-            websiteUrl:
-              href && !href.startsWith("#") && !href.startsWith("javascript:")
-                ? resolveUrl(href, url)
-                : undefined,
+            websiteUrl: getExternalUrl(href || "", url) || undefined,
             sourceUrl: url,
           });
         }
@@ -901,6 +904,40 @@ function resolveUrl(href: string, baseUrl: string): string {
     return new URL(href, baseUrl).toString();
   } catch {
     return href;
+  }
+}
+
+/**
+ * Check if a URL is external (different domain from source)
+ * Returns null if it's an internal link, otherwise returns the external URL
+ */
+function getExternalUrl(href: string, sourceUrl: string): string | null {
+  if (!href || href.startsWith("#") || href.startsWith("javascript:")) {
+    return null;
+  }
+
+  try {
+    const resolved = new URL(href, sourceUrl);
+    const source = new URL(sourceUrl);
+
+    // Get base domains (strip www. and subdomains for comparison)
+    const getBaseDomain = (hostname: string) => {
+      const parts = hostname.replace(/^www\./, "").split(".");
+      // Keep last 2 parts (e.g., "example.com" from "sub.example.com")
+      return parts.slice(-2).join(".");
+    };
+
+    const resolvedDomain = getBaseDomain(resolved.hostname);
+    const sourceDomain = getBaseDomain(source.hostname);
+
+    // Only return if it's an external domain
+    if (resolvedDomain !== sourceDomain) {
+      return resolved.toString();
+    }
+
+    return null;
+  } catch {
+    return null;
   }
 }
 

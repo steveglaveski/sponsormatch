@@ -38,21 +38,33 @@ export async function POST(request: Request) {
     }
 
     // Discover contacts
+    console.log(`[ContactDiscovery] Starting discovery for "${sponsor.companyName}", website: ${sponsor.website || "none"}`);
     const result = await discoverContacts(sponsor.companyName, sponsor.website || undefined);
+    console.log(`[ContactDiscovery] Found ${result.contacts.length} contacts:`, result.contacts.map(c => ({ email: c.email, source: c.source, confidence: c.confidence })));
 
-    // Update sponsor with best contact found (if better than existing)
+    // Update sponsor with best contact found
     if (result.contacts.length > 0) {
       const bestContact = result.contacts.find(
         (c) => c.confidence === "high" && c.email
-      ) || result.contacts.find((c) => c.email);
+      ) || result.contacts.find((c) => c.confidence === "medium" && c.email)
+        || result.contacts.find((c) => c.email);
 
-      if (bestContact?.email && !sponsor.contactEmail) {
+      // Update if we found a better email (high/medium confidence) or no email exists
+      const shouldUpdate = bestContact?.email && (
+        !sponsor.contactEmail ||
+        (bestContact.confidence === "high" && !sponsor.contactEmail?.includes(bestContact.email.split("@")[1])) ||
+        (bestContact.source === "website" || bestContact.source === "api")
+      );
+
+      if (shouldUpdate && bestContact) {
+        console.log(`[ContactDiscovery] Updating sponsor with email: ${bestContact.email} (${bestContact.source}, ${bestContact.confidence})`);
         await prisma.sponsor.update({
           where: { id: sponsorId },
           data: {
             contactEmail: bestContact.email,
             contactName: bestContact.contactName || sponsor.contactName,
             contactPhone: bestContact.phone || sponsor.contactPhone,
+            emailVerified: bestContact.verified || false,
           },
         });
       }

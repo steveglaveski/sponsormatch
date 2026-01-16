@@ -141,7 +141,9 @@ export async function discoverContacts(
   // Strategy 1: Scrape their website for contact info (most reliable)
   if (website) {
     try {
+      console.log(`[ContactDiscovery] Strategy 1: Scraping website ${website}`);
       const scrapedContacts = await scrapeWebsiteForContacts(website);
+      console.log(`[ContactDiscovery] Website scrape found ${scrapedContacts.length} emails`);
       if (scrapedContacts.length > 0) {
         websiteData.hasContactPage = true;
         contacts.push(...scrapedContacts);
@@ -169,9 +171,12 @@ export async function discoverContacts(
     (c) => c.email && c.confidence === "high"
   );
 
+  console.log(`[ContactDiscovery] Strategy 2: Hunter.io API - hasHighConfidenceEmail=${hasHighConfidenceEmail}, hasApiKey=${!!process.env.HUNTER_API_KEY}`);
+
   if (!hasHighConfidenceEmail && process.env.HUNTER_API_KEY && website) {
     try {
       const apiContacts = await findEmailViaHunter(website);
+      console.log(`[ContactDiscovery] Hunter.io found ${apiContacts.length} contacts`);
       if (apiContacts.length > 0) {
         contacts.push(...apiContacts);
       }
@@ -182,14 +187,19 @@ export async function discoverContacts(
 
   // Strategy 3: Guess and optionally verify (last resort)
   const hasAnyEmail = contacts.some((c) => c.email);
+  console.log(`[ContactDiscovery] Strategy 3: Guessing - hasAnyEmail=${hasAnyEmail}`);
+
   if (!hasAnyEmail) {
     const domain = extractDomain(website);
+    console.log(`[ContactDiscovery] Extracted domain: ${domain}`);
     if (domain) {
       const guessedContacts = await guessEmails(domain);
+      console.log(`[ContactDiscovery] Guessed ${guessedContacts.length} emails`);
       contacts.push(...guessedContacts);
     } else {
       // No website - guess domain from company name
       const guessedDomain = guessDomain(decodedCompanyName);
+      console.log(`[ContactDiscovery] Guessed domain from name: ${guessedDomain}`);
       if (guessedDomain) {
         const guessedContacts = await guessEmails(guessedDomain);
         contacts.push(...guessedContacts);
