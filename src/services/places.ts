@@ -78,6 +78,8 @@ export async function searchNearbyClubs(
   const seenPlaceIds = new Set<string>();
 
   // Search with multiple keywords to find different types of sports clubs
+  console.log(`[Places] Searching near ${latitude}, ${longitude} with radius ${radiusKm}km`);
+
   for (const keyword of CLUB_SEARCH_KEYWORDS) {
     try {
       const results = await searchWithKeyword(
@@ -87,6 +89,8 @@ export async function searchNearbyClubs(
         keyword,
         apiKey
       );
+
+      console.log(`[Places] Keyword "${keyword}" returned ${results.length} results`);
 
       for (const result of results) {
         if (!seenPlaceIds.has(result.placeId)) {
@@ -117,6 +121,9 @@ export async function searchNearbyClubs(
 
   // Sort by distance
   const sortedResults = allResults.sort((a, b) => a.distanceKm - b.distanceKm);
+
+  console.log(`[Places] Total unique results: ${sortedResults.length}`);
+  console.log(`[Places] Club names found:`, sortedResults.slice(0, 10).map(r => r.name));
 
   // Fetch detailed info (website, phone) for each club
   // Process in batches to avoid overwhelming the API
