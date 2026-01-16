@@ -532,41 +532,21 @@ async function findEmailByCompanyName(companyName: string): Promise<ContactInfo[
 }
 
 /**
- * Strategy 3: Guess common email patterns
+ * Strategy 3: Guess common email patterns (FREE - no API calls)
+ * We don't verify with Hunter.io here to save API costs.
+ * Users can click "Find Better Email" to use Hunter.io if needed.
  */
 async function guessEmails(domain: string): Promise<ContactInfo[]> {
   const contacts: ContactInfo[] = [];
 
-  // Common email patterns to suggest
-  const patterns = ["info", "contact", "hello", "enquiries", "admin"];
-
-  // If Hunter API key is available, verify the guesses
-  if (process.env.HUNTER_API_KEY) {
-    for (const prefix of patterns.slice(0, 2)) {
-      const email = `${prefix}@${domain}`;
-      const isValid = await verifyEmailWithHunter(email);
-
-      if (isValid) {
-        contacts.push({
-          email,
-          source: "pattern",
-          confidence: "medium",
-          verified: true,
-        });
-        break; // Found a valid one
-      }
-    }
-  }
-
-  // If no verified email found, return best guess
-  if (contacts.length === 0) {
-    contacts.push({
-      email: `info@${domain}`,
-      source: "pattern",
-      confidence: "low",
-      verified: false,
-    });
-  }
+  // Return best guess without verification (FREE)
+  // Confidence is "low" since we're just guessing
+  contacts.push({
+    email: `info@${domain}`,
+    source: "pattern",
+    confidence: "low",
+    verified: false,
+  });
 
   return contacts;
 }

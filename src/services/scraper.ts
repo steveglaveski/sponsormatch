@@ -19,6 +19,81 @@ export interface ScrapeResult {
 const lastRequestTime = new Map<string, number>();
 
 /**
+ * Detect if text looks like an image filename, CMS hash, or garbage
+ * Returns true if the text should be rejected
+ */
+function isGarbageText(text: string): boolean {
+  if (!text) return true;
+
+  const lowerText = text.toLowerCase();
+
+  // Pattern 1: Contains long alphanumeric hashes (12+ chars without spaces)
+  // e.g., "qmp0samij3o2ocrz733c6zhl8gptmup79p42pgay9s"
+  const hashPattern = /[a-z0-9]{12,}/i;
+  const wordsWithHashes = text.split(/\s+/).filter((word) => hashPattern.test(word));
+  if (wordsWithHashes.length > 0) return true;
+
+  // Pattern 2: Looks like an image filename
+  const filenamePatterns = [
+    /^IMG[\s_-]?\d+/i, // IMG_1234, IMG 1234
+    /^DSC[\s_-]?\d+/i, // DSC_1234
+    /^Photo[\s_-]?\d+/i, // Photo_1234
+    /^Image[\s_-]?\d+/i, // Image_1234
+    /^\d{4}[\s_-]\d{2}[\s_-]\d{2}/, // 2024-01-15
+    /\d{1,2}\.\d{2}\.\d{2}\s*(am|pm)/i, // 7.09.57 pm (timestamp)
+    /\d+x\d+/, // 150x150 (dimensions)
+    /\.(jpg|jpeg|png|gif|svg|webp|pdf|bmp|tiff?)$/i, // File extensions
+  ];
+
+  for (const pattern of filenamePatterns) {
+    if (pattern.test(text)) return true;
+  }
+
+  // Pattern 3: Contains image/design file keywords
+  const fileKeywords = [
+    "cmyk",
+    "rgb",
+    "lockup",
+    "tagline",
+    "positive",
+    "negative",
+    "stacked",
+    "horizontal",
+    "vertical",
+    "copy of",
+    "scaled",
+    "cropped",
+    "resized",
+    "thumbnail",
+    "preview",
+    "final",
+    "draft",
+    "v1",
+    "v2",
+    "v3",
+    "_v",
+    "-v",
+    "artwork",
+    "artfile",
+    "press",
+    "print ready",
+  ];
+  for (const keyword of fileKeywords) {
+    if (lowerText.includes(keyword)) return true;
+  }
+
+  // Pattern 4: More than 30% of total length is from hash-like words
+  const totalLength = text.replace(/\s/g, "").length;
+  const hashLength = wordsWithHashes.join("").length;
+  if (totalLength > 0 && hashLength / totalLength > 0.3) return true;
+
+  // Pattern 5: Contains sequences like "r3f6csp8h866" anywhere
+  if (/[a-z]\d[a-z0-9]{6,}/i.test(text)) return true;
+
+  return false;
+}
+
+/**
  * Decode URL-encoded text and clean it up
  * Handles %20 -> space, %26 -> &, etc.
  */
@@ -306,6 +381,30 @@ const NON_SPONSOR_PATTERNS = [
   /^\d+x\d+$/,  // Dimensions like 150x150
   /\.(jpg|jpeg|png|gif|svg|webp|pdf)$/i,  // File extensions
 
+  // Image/design file patterns
+  /cmyk/i,
+  /rgb\b/i,
+  /lockup/i,
+  /tagline/i,
+  /\bwith\s+tagline\b/i,
+  /positive\s+(cmyk|rgb)/i,
+  /negative\s+(cmyk|rgb)/i,
+  /\bstacked\b/i,
+  /\bhorizontal\b/i,
+  /\bvertical\b/i,
+  /artwork/i,
+  /artfile/i,
+  /print\s*ready/i,
+  /\bpress\b.*\bready\b/i,
+  /thumbnail/i,
+  /preview/i,
+  /\bdraft\b/i,
+  /\bv\d+\b/i,  // v1, v2, etc.
+  /_v\d/i,  // _v1, _v2
+  /-v\d/i,  // -v1, -v2
+  /\br\d[a-z0-9]{5,}/i,  // CMS hashes like r3f6csp8h866
+  /\bq[a-z0-9]{10,}/i,  // CDN hashes like qmp0samij3o2
+
   // Website/social media elements
   /^facebook$/i,
   /^instagram$/i,
@@ -382,6 +481,11 @@ function isValidSponsorName(name: string): boolean {
 
   const trimmed = name.trim();
 
+  // First check if it's garbage (hashes, filenames, etc.)
+  if (isGarbageText(trimmed)) {
+    return false;
+  }
+
   // Check against blocklist patterns
   for (const pattern of NON_SPONSOR_PATTERNS) {
     if (pattern.test(trimmed)) {
@@ -451,12 +555,13 @@ function isValidSponsorName(name: string): boolean {
 }
 
 /**
- * Extract sponsor name from image - tries alt, title, then filename
+ * Extract sponsor name from image - tries alt, title, parent link URL, then filename
  * Cleans the name to remove prefixes like "Logo of partner"
  */
 function extractSponsorNameFromImage(
   $: cheerio.CheerioAPI,
-  img: ReturnType<typeof $>
+  img: ReturnType<typeof $>,
+  parentLink?: ReturnType<typeof $>
 ): string | null {
   // Try alt text first - clean it before validating
   const alt = img.attr("alt")?.trim();
@@ -476,7 +581,17 @@ function extractSponsorNameFromImage(
     }
   }
 
-  // Try to extract from filename (but be more strict)
+  // Try to extract from parent link URL (more reliable than filename)
+  // e.g., link to "https://www.alanmance.com.au" → "Alan Mance"
+  const linkHref = parentLink?.attr("href") || img.closest("a").attr("href");
+  if (linkHref && linkHref.startsWith("http")) {
+    const nameFromUrl = extractCompanyNameFromUrl(linkHref);
+    if (nameFromUrl && isValidSponsorName(nameFromUrl)) {
+      return nameFromUrl;
+    }
+  }
+
+  // Try to extract from filename (but be VERY strict - this is lowest quality)
   const src = img.attr("src") || "";
   if (src) {
     try {
@@ -494,12 +609,19 @@ function extractSponsorNameFromImage(
       // Clean the filename-derived name
       nameFromFile = cleanSponsorName(nameFromFile);
 
-      // Only accept filename-based names if they look like company names
-      // (at least 2 words or a known company pattern)
+      // Only accept filename-based names if they look like real company names
+      // Must be at least 2 words AND pass validation
       if (nameFromFile && isValidSponsorName(nameFromFile)) {
-        // Extra validation for filename-derived names: prefer multi-word or known patterns
-        const words = nameFromFile.split(" ").filter(w => w.length > 1);
-        if (words.length >= 2 || nameFromFile.length >= 6) {
+        const words = nameFromFile.split(" ").filter((w) => w.length > 1);
+        // Be extra strict with filenames: need 2+ words, or recognized business suffix
+        if (words.length >= 2) {
+          return nameFromFile;
+        }
+        // Single word only if it has a business suffix
+        const hasBusinessSuffix = BUSINESS_SUFFIXES.some((p) =>
+          p.test(nameFromFile)
+        );
+        if (hasBusinessSuffix) {
           return nameFromFile;
         }
       }
@@ -817,12 +939,52 @@ async function extractSponsorsFromPage(
  * Clean raw sponsor text to extract just the company name
  * Removes common prefixes like "Logo of partner Mission Foods" → "Mission Foods"
  * Also decodes URL-encoded characters like %20 → space
+ * Strips CMS hashes and file garbage like "qmp0samij3o2ocrz..."
  */
 function cleanSponsorName(rawText: string): string {
   if (!rawText || typeof rawText !== "string") return "";
 
   // First decode any URL-encoded characters (e.g., %20 -> space)
   let cleaned = cleanAndDecodeText(rawText);
+
+  // Remove CMS/CDN hashes (12+ alphanumeric characters) from anywhere in the string
+  // e.g., "godfathers logo qmcldza1s5c5de3jrjj5vuwe3gp0cmqtuu7dyzaqkg" → "godfathers logo"
+  cleaned = cleaned.replace(/\s+[a-z0-9]{12,}$/i, ""); // trailing hash
+  cleaned = cleaned.replace(/\s+[a-z]\d[a-z0-9]{8,}/gi, ""); // mid-string hash like r3f6csp8h866
+
+  // Remove image dimensions like "150x150"
+  cleaned = cleaned.replace(/\s*\d+x\d+\s*/gi, " ");
+
+  // Remove timestamps like "7.09.57 pm"
+  cleaned = cleaned.replace(/\s*\d{1,2}\.\d{2}\.\d{2}\s*(am|pm)?\s*/gi, " ");
+
+  // Remove image/design file terms
+  const garbageTerms = [
+    /\s+cmyk\b/gi,
+    /\s+rgb\b/gi,
+    /\s+lockup\b/gi,
+    /\s+with\s+tagline\b/gi,
+    /\s+tagline\b/gi,
+    /\s+positive\b/gi,
+    /\s+negative\b/gi,
+    /\s+stacked\b/gi,
+    /\s+horizontal\b/gi,
+    /\s+vertical\b/gi,
+    /\s+artwork\b/gi,
+    /\s+artfile\b/gi,
+    /\s+print\s*ready\b/gi,
+    /\s+thumbnail\b/gi,
+    /\s+preview\b/gi,
+    /\s+draft\b/gi,
+    /\s+v\d+\b/gi,
+    /\s+_v\d\b/gi,
+    /\s+-v\d\b/gi,
+    /\s+final\b/gi,
+  ];
+
+  for (const pattern of garbageTerms) {
+    cleaned = cleaned.replace(pattern, "");
+  }
 
   // Remove common prefixes from alt text (order matters - longer patterns first)
   const prefixPatterns = [
@@ -858,6 +1020,10 @@ function cleanSponsorName(rawText: string): string {
 
   // Normalize whitespace
   cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+  // Final check: if what's left is too short or still garbage, return empty
+  if (cleaned.length < 2) return "";
+  if (isGarbageText(cleaned)) return "";
 
   return cleaned;
 }
@@ -904,6 +1070,69 @@ function resolveUrl(href: string, baseUrl: string): string {
     return new URL(href, baseUrl).toString();
   } catch {
     return href;
+  }
+}
+
+/**
+ * Extract company name from URL domain
+ * e.g., "https://www.alanmance.com.au" → "Alan Mance"
+ */
+function extractCompanyNameFromUrl(url: string): string | null {
+  if (!url) return null;
+
+  try {
+    const parsed = new URL(url);
+    let hostname = parsed.hostname;
+
+    // Remove www. prefix
+    hostname = hostname.replace(/^www\./, "");
+
+    // Remove TLD and country codes
+    // e.g., "alanmance.com.au" → "alanmance"
+    let name = hostname
+      .replace(/\.(com|net|org|io|co|biz|info)(\.[a-z]{2})?$/i, "")
+      .replace(/\.[a-z]{2,3}$/i, ""); // fallback for other TLDs
+
+    // Skip if it's a known non-sponsor domain
+    const skipDomains = [
+      "facebook",
+      "twitter",
+      "instagram",
+      "linkedin",
+      "youtube",
+      "tiktok",
+      "google",
+      "apple",
+      "amazon",
+      "microsoft",
+      "cloudfront",
+      "amazonaws",
+      "cloudinary",
+      "imgix",
+      "squarespace",
+      "wixstatic",
+      "shopify",
+    ];
+    if (skipDomains.some((d) => name.includes(d))) return null;
+
+    // Convert dashes/underscores to spaces
+    name = name.replace(/[-_]/g, " ");
+
+    // Capitalize each word
+    name = name
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+
+    // Validate - must be reasonable length
+    if (name.length < 2 || name.length > 40) return null;
+
+    // Must have at least one letter
+    if (!/[a-zA-Z]/.test(name)) return null;
+
+    return name;
+  } catch {
+    return null;
   }
 }
 
