@@ -1,4 +1,4 @@
-import { PrismaAdapter } from "@auth/prisma-adapter";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
@@ -14,10 +14,12 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
     error: "/login",
   },
+  debug: process.env.NODE_ENV === "development",
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
     }),
     CredentialsProvider({
       name: "credentials",
@@ -57,9 +59,27 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      // Debug logging
+      console.log("[NextAuth] signIn callback:", {
+        userId: user?.id,
+        email: user?.email,
+        provider: account?.provider
+      });
+      return true;
+    },
+    async jwt({ token, user, account }) {
+      // On initial sign in, user and account are available
       if (user) {
         token.id = user.id;
+        token.email = user.email;
+      }
+      // Debug logging
+      if (account) {
+        console.log("[NextAuth] jwt callback with account:", {
+          provider: account.provider,
+          userId: user?.id
+        });
       }
       return token;
     },

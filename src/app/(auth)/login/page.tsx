@@ -20,10 +20,26 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+  const authError = searchParams.get("error");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => {
+    // Map NextAuth error codes to user-friendly messages
+    if (authError === "OAuthAccountNotLinked") {
+      return "This email is already registered with a different sign-in method. Please use your original sign-in method.";
+    }
+    if (authError === "OAuthCallback") {
+      return "There was a problem signing in with Google. Please try again.";
+    }
+    if (authError === "OAuthSignin") {
+      return "Could not start Google sign-in. Please try again.";
+    }
+    if (authError) {
+      return `Authentication error: ${authError}`;
+    }
+    return "";
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
