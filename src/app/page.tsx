@@ -60,7 +60,7 @@ export default function HomePage() {
           </p>
 
           {/* Explainer Video */}
-          <VideoModal videoId="EkUVwqaDHU0" />
+          <VideoModal videoId="Q7NC_Ec5hUA" />
         </div>
       </section>
 
