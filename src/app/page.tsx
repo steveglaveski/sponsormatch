@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { VideoModal } from "@/components/video-modal";
 
 export default function HomePage() {
   return (
@@ -57,6 +58,9 @@ export default function HomePage() {
           <p className="mt-4 text-sm text-neutral-500">
             5 free emails included. No credit card required.
           </p>
+
+          {/* Explainer Video */}
+          <VideoModal videoId="EkUVwqaDHU0" />
         </div>
       </section>
 
