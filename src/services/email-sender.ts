@@ -37,7 +37,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       .join("");
 
     const { data, error } = await resend.emails.send({
-      from: params.from || "SponsorMatch <noreply@sponsormatch.com.au>",
+      from: params.from || process.env.EMAIL_FROM || "SponsorMatch <onboarding@resend.dev>",
       to: params.to,
       replyTo: params.replyTo,
       subject: params.subject,
