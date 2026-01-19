@@ -222,7 +222,7 @@ export default function TermsPage() {
               If you have any questions about these Terms, please contact us at:
             </p>
             <p className="text-neutral-700 leading-relaxed mt-4">
-              <strong>Email:</strong> support@sponsormatch.com.au
+              <strong>Email:</strong> steve@collectivecamp.us
             </p>
           </section>
         </div>
