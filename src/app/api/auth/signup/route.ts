@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
+import { sendNewUserNotification } from "@/services/email-sender";
 
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -48,6 +49,9 @@ export async function POST(request: Request) {
         createdAt: true,
       },
     });
+
+    // Send admin notification (don't await to avoid slowing down response)
+    sendNewUserNotification({ email, name, provider: "credentials" });
 
     return NextResponse.json(
       { message: "Account created successfully", user },

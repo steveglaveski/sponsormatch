@@ -73,3 +73,33 @@ export function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 }
+
+/**
+ * Send admin notification for new user signup
+ */
+export async function sendNewUserNotification(user: {
+  email: string;
+  name?: string | null;
+  provider?: string;
+}): Promise<void> {
+  const adminEmail = "steve@collectivecamp.us";
+  const signupMethod = user.provider === "google" ? "Google OAuth" : "Email/Password";
+
+  try {
+    await sendEmail({
+      to: adminEmail,
+      replyTo: adminEmail,
+      subject: `🎉 New SponsorMatch Signup: ${user.email}`,
+      body: `A new user has signed up for SponsorMatch!
+
+Email: ${user.email}
+Name: ${user.name || "Not provided"}
+Signup Method: ${signupMethod}
+Time: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Melbourne" })}
+
+View all users in your database to see their activity.`,
+    });
+  } catch (error) {
+    console.error("Failed to send new user notification:", error);
+  }
+}

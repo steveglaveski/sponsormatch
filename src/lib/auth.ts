@@ -4,6 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import { sendNewUserNotification } from "@/services/email-sender";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -63,6 +64,18 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  events: {
+    async createUser({ user }) {
+      // Send notification when a new user signs up via OAuth
+      if (user.email) {
+        sendNewUserNotification({
+          email: user.email,
+          name: user.name,
+          provider: "google",
+        });
+      }
+    },
+  },
   callbacks: {
     async signIn({ user, account }) {
       // Debug logging
