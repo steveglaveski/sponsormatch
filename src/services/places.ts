@@ -288,8 +288,7 @@ export function inferSportType(name: string, types: string[]): string | null {
   const nameLower = name.toLowerCase();
 
   const sportPatterns: Array<{ pattern: RegExp; sport: string }> = [
-    { pattern: /\bafl\b|aussie rules|australian football/i, sport: "AFL" },
-    { pattern: /\bsoccer\b|football club(?!.*australian)/i, sport: "Soccer" },
+    { pattern: /\bafl\b|aussie rules|australian football|\bsoccer\b|football club/i, sport: "Football" },
     { pattern: /\brugby league\b|league club/i, sport: "Rugby League" },
     { pattern: /\brugby union\b|rugby club/i, sport: "Rugby Union" },
     { pattern: /\bcricket\b/i, sport: "Cricket" },

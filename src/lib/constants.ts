@@ -12,8 +12,7 @@ export const AUSTRALIAN_STATES = [
 export type AustralianState = (typeof AUSTRALIAN_STATES)[number];
 
 export const SPORT_TYPES = [
-  "AFL",
-  "Soccer",
+  "Football",
   "Rugby League",
   "Rugby Union",
   "Cricket",
