@@ -32,6 +32,8 @@ export async function GET() {
     const baseUrl = process.env.NEXTAUTH_URL || "http://localhost:3000";
     const redirectUri = `${baseUrl}/api/gmail/callback`;
 
+    console.log("[Gmail Connect] Redirect URI:", redirectUri);
+
     // Create state token to prevent CSRF (includes user ID)
     const state = Buffer.from(
       JSON.stringify({
