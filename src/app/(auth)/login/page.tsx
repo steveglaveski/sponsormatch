@@ -35,6 +35,9 @@ function LoginForm() {
     if (authError === "OAuthSignin") {
       return "Could not start Google sign-in. Please try again.";
     }
+    if (authError === "IPLimitReached") {
+      return "Maximum accounts have already been created from this network. Please contact support if you need assistance.";
+    }
     if (authError) {
       return `Authentication error: ${authError}`;
     }

@@ -67,3 +67,10 @@ export const DEFAULT_SEARCH_RADIUS_KM = 10;
 // Rate limiting
 export const SCRAPE_DELAY_MS = 1000; // 1 second between requests per domain
 export const CACHE_TTL_DAYS = 7; // Cache scraped data for 7 days
+
+// IP-based signup restrictions
+export const MAX_ACCOUNTS_PER_IP = 2;
+export const WHITELISTED_IPS = [
+  "2001:4860:7:c01::ed", // IPv6
+  "115.129.139.104",     // IPv4
+] as const;

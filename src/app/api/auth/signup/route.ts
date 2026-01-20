@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { sendNewUserNotification } from "@/services/email-sender";
+import { getClientIp, canSignupFromIp } from "@/lib/ip";
 
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -20,6 +21,17 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, password, name } = signupSchema.parse(body);
+
+    // Check IP-based signup restrictions
+    const clientIp = await getClientIp();
+    const ipCheck = await canSignupFromIp(clientIp);
+
+    if (!ipCheck.allowed) {
+      return NextResponse.json(
+        { error: ipCheck.reason },
+        { status: 403 }
+      );
+    }
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -41,6 +53,7 @@ export async function POST(request: Request) {
         email,
         passwordHash,
         name,
+        signupIp: clientIp,
       },
       select: {
         id: true,

@@ -3,8 +3,23 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
+import { headers } from "next/headers";
 import { prisma } from "./prisma";
 import { sendNewUserNotification } from "@/services/email-sender";
+import { canSignupFromIp, isIpWhitelisted } from "./ip";
+import { MAX_ACCOUNTS_PER_IP } from "./constants";
+
+/**
+ * Get client IP from headers (for use in NextAuth callbacks)
+ */
+async function getClientIpFromHeaders(): Promise<string | null> {
+  const headersList = await headers();
+  const forwardedFor = headersList.get("x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() || null;
+  }
+  return headersList.get("x-real-ip") || headersList.get("cf-connecting-ip") || null;
+}
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -66,6 +81,15 @@ export const authOptions: NextAuthOptions = {
   ],
   events: {
     async createUser({ user }) {
+      // Store signup IP for OAuth users
+      const clientIp = await getClientIpFromHeaders();
+      if (clientIp && user.id) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { signupIp: clientIp },
+        });
+      }
+
       // Send notification when a new user signs up via OAuth
       if (user.email) {
         sendNewUserNotification({
@@ -84,6 +108,27 @@ export const authOptions: NextAuthOptions = {
         email: user?.email,
         provider: account?.provider
       });
+
+      // For OAuth providers, check if this is a new user and apply IP restrictions
+      if (account?.provider === "google" && user?.email) {
+        // Check if user already exists
+        const existingUser = await prisma.user.findUnique({
+          where: { email: user.email },
+        });
+
+        // If user doesn't exist, this is a new signup - check IP restrictions
+        if (!existingUser) {
+          const clientIp = await getClientIpFromHeaders();
+          const ipCheck = await canSignupFromIp(clientIp);
+
+          if (!ipCheck.allowed) {
+            console.log("[NextAuth] Blocked OAuth signup from IP:", clientIp);
+            // Return false with error query param
+            return `/login?error=IPLimitReached`;
+          }
+        }
+      }
+
       return true;
     },
     async jwt({ token, user, account }) {

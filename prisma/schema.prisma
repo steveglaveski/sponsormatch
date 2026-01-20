@@ -16,6 +16,7 @@ model User {
   passwordHash  String?
   name          String?
   image         String?
+  signupIp      String?   // IP address at signup for abuse prevention
 
   // Club information
   clubName      String?
