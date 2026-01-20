@@ -21,6 +21,7 @@ import {
 interface UserBilling {
   subscriptionTier: SubscriptionTier;
   emailsSent: number;
+  clubsViewed: number;
   stripeCustomerId: string | null;
 }
 
@@ -28,27 +29,27 @@ const TIER_FEATURES: Record<SubscriptionTier, string[]> = {
   FREE: [
     "5 emails per month",
     "10 sponsor searches",
-    "View 20 sponsor details",
+    "View sponsors for 5 clubs",
     "Basic email templates",
   ],
   STARTER: [
     "50 emails per month",
     "50 sponsor searches",
-    "View 100 sponsor details",
+    "View sponsors for 50 clubs",
     "AI-powered email generation",
     "Email tracking",
   ],
   PRO: [
     "200 emails per month",
     "Unlimited searches",
-    "Unlimited sponsor details",
+    "Unlimited club access",
     "AI-powered email generation",
     "Priority support",
   ],
   UNLIMITED: [
     "Unlimited emails",
     "Unlimited searches",
-    "Unlimited sponsor details",
+    "Unlimited club access",
     "AI-powered email generation",
     "Priority support",
     "Dedicated account manager",
@@ -86,6 +87,7 @@ function BillingContent() {
         setUser({
           subscriptionTier: data.user.subscriptionTier,
           emailsSent: data.user.emailsSent,
+          clubsViewed: data.user.clubsViewed?.length || 0,
           stripeCustomerId: data.user.stripeCustomerId,
         });
       }
@@ -203,7 +205,7 @@ function BillingContent() {
                 : `$${SUBSCRIPTION_LIMITS[currentTier].price}/month`}
             </span>
           </div>
-          <div className="mt-4 text-sm text-neutral-600">
+          <div className="mt-4 space-y-1 text-sm text-neutral-600">
             <p>
               Emails used this month:{" "}
               <span className="font-medium">
@@ -211,6 +213,15 @@ function BillingContent() {
                 {SUBSCRIPTION_LIMITS[currentTier].emailsPerMonth === -1
                   ? "Unlimited"
                   : SUBSCRIPTION_LIMITS[currentTier].emailsPerMonth}
+              </span>
+            </p>
+            <p>
+              Clubs with sponsors viewed:{" "}
+              <span className="font-medium">
+                {user?.clubsViewed || 0} /{" "}
+                {SUBSCRIPTION_LIMITS[currentTier].clubsWithSponsorsVisible === -1
+                  ? "Unlimited"
+                  : SUBSCRIPTION_LIMITS[currentTier].clubsWithSponsorsVisible}
               </span>
             </p>
           </div>

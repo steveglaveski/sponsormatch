@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { scrapeClubSponsors } from "@/services/scraper";
 import { getPlaceDetails } from "@/services/places";
 import { CACHE_TTL_DAYS } from "@/lib/constants";
+import { canViewClubSponsors, SUBSCRIPTION_LIMITS } from "@/lib/subscription";
 
 interface RouteParams {
   params: Promise<{ clubId: string }>;
@@ -23,6 +24,40 @@ export async function GET(request: Request, { params }: RouteParams) {
     }
 
     const { clubId } = await params;
+
+    // Get user to check subscription limits
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        subscriptionTier: true,
+        clubsViewed: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Check if user can view this club's sponsors
+    const canView = canViewClubSponsors(
+      user.subscriptionTier,
+      user.clubsViewed,
+      clubId
+    );
+
+    if (!canView) {
+      const limit = SUBSCRIPTION_LIMITS[user.subscriptionTier].clubsWithSponsorsVisible;
+      return NextResponse.json(
+        {
+          error: "Club limit reached",
+          message: `You've reached your limit of ${limit} clubs. Upgrade your plan to view more sponsors.`,
+          upgradeRequired: true,
+          clubsViewed: user.clubsViewed.length,
+          limit,
+        },
+        { status: 403 }
+      );
+    }
 
     // Get club with existing sponsors
     const club = await prisma.club.findUnique({
@@ -150,6 +185,25 @@ export async function GET(request: Request, { params }: RouteParams) {
       },
     });
 
+    // Track this club view if not already viewed
+    if (!user.clubsViewed.includes(clubId)) {
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          clubsViewed: {
+            push: clubId,
+          },
+        },
+      });
+    }
+
+    // Calculate remaining club views
+    const updatedClubsViewedCount = user.clubsViewed.includes(clubId)
+      ? user.clubsViewed.length
+      : user.clubsViewed.length + 1;
+    const limit = SUBSCRIPTION_LIMITS[user.subscriptionTier].clubsWithSponsorsVisible;
+    const remainingClubViews = limit === -1 ? "unlimited" : Math.max(0, limit - updatedClubsViewedCount);
+
     return NextResponse.json({
       club: {
         id: updatedClub?.id,
@@ -174,6 +228,8 @@ export async function GET(request: Request, { params }: RouteParams) {
       })),
       totalSponsors: updatedClub?.sponsors.length || 0,
       scrapedNew,
+      clubsViewed: updatedClubsViewedCount,
+      remainingClubViews,
     });
   } catch (error) {
     console.error("Error fetching sponsors:", error);

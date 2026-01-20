@@ -33,6 +33,7 @@ export async function GET() {
         clubAddress: true,
         subscriptionTier: true,
         emailsSent: true,
+        clubsViewed: true,
         stripeCustomerId: true,
         createdAt: true,
         gmailConnected: true,

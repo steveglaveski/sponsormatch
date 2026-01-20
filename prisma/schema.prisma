@@ -27,6 +27,7 @@ model User {
   // Subscription & usage
   subscriptionTier  SubscriptionTier @default(FREE)
   emailsSent        Int              @default(0)
+  clubsViewed       String[]         @default([])  // Club IDs where user has viewed sponsors
   stripeCustomerId  String?
 
   // Gmail integration for sending emails

@@ -47,6 +47,13 @@ interface ClubData {
   sponsors: Sponsor[];
   totalSponsors: number;
   scrapedNew: boolean;
+  clubsViewed: number;
+  remainingClubViews: number | "unlimited";
+}
+
+interface UpgradeRequiredData {
+  clubsViewed: number;
+  limit: number;
 }
 
 export default function ClubSponsorsPage() {
@@ -58,6 +65,7 @@ export default function ClubSponsorsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRescraping, setIsRescraping] = useState(false);
   const [error, setError] = useState("");
+  const [upgradeRequired, setUpgradeRequired] = useState<UpgradeRequiredData | null>(null);
   const [discoveringContacts, setDiscoveringContacts] = useState<Set<string>>(new Set());
   const [discoveredContacts, setDiscoveredContacts] = useState<Map<string, { email?: string; phone?: string; name?: string }>>(new Map());
 
@@ -68,12 +76,20 @@ export default function ClubSponsorsPage() {
   async function fetchSponsors() {
     setIsLoading(true);
     setError("");
+    setUpgradeRequired(null);
 
     try {
       const response = await fetch(`/api/sponsors/${clubId}`);
       const result = await response.json();
 
       if (!response.ok) {
+        if (response.status === 403 && result.upgradeRequired) {
+          setUpgradeRequired({
+            clubsViewed: result.clubsViewed,
+            limit: result.limit,
+          });
+          return;
+        }
         setError(result.error || "Failed to fetch sponsors");
         return;
       }
@@ -205,6 +221,58 @@ export default function ClubSponsorsPage() {
         <Card>
           <CardContent className="py-8">
             <div className="text-center text-red-600">{error}</div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (upgradeRequired) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" onClick={() => router.back()}>
+          &larr; Back
+        </Button>
+        <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50">
+          <CardContent className="py-12">
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+                <svg
+                  className="h-8 w-8 text-amber-600"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-neutral-900">
+                Upgrade to View More Sponsors
+              </h2>
+              <p className="mt-2 text-neutral-600 max-w-md mx-auto">
+                You&apos;ve viewed sponsors for {upgradeRequired.clubsViewed} of {upgradeRequired.limit} clubs
+                on your free plan. Upgrade to unlock unlimited club access and discover more sponsors.
+              </p>
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                <Button asChild size="lg" className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800">
+                  <Link href="/settings/billing">
+                    View Pricing Plans
+                  </Link>
+                </Button>
+                <Button variant="outline" size="lg" onClick={() => router.back()}>
+                  Back to Search
+                </Button>
+              </div>
+              <p className="mt-4 text-sm text-neutral-500">
+                Starting at just $29/month for 50 clubs
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

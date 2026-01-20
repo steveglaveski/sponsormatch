@@ -7,32 +7,32 @@ export const SUBSCRIPTION_LIMITS: Record<
     price: number;
     emailsPerMonth: number;
     searchesPerMonth: number;
-    sponsorDetailsVisible: number;
+    clubsWithSponsorsVisible: number;
   }
 > = {
   FREE: {
     price: 0,
     emailsPerMonth: 5,
     searchesPerMonth: 10,
-    sponsorDetailsVisible: 20,
+    clubsWithSponsorsVisible: 5,
   },
   STARTER: {
     price: 29, // AUD per month
     emailsPerMonth: 50,
     searchesPerMonth: 50,
-    sponsorDetailsVisible: 100,
+    clubsWithSponsorsVisible: 50,
   },
   PRO: {
     price: 79, // AUD per month
     emailsPerMonth: 200,
     searchesPerMonth: -1, // unlimited
-    sponsorDetailsVisible: -1, // unlimited
+    clubsWithSponsorsVisible: -1, // unlimited
   },
   UNLIMITED: {
     price: 149, // AUD per month
     emailsPerMonth: -1, // unlimited
     searchesPerMonth: -1,
-    sponsorDetailsVisible: -1,
+    clubsWithSponsorsVisible: -1,
   },
 };
 
@@ -58,4 +58,28 @@ export function getRemainingEmails(
   const limit = SUBSCRIPTION_LIMITS[tier].emailsPerMonth;
   if (limit === -1) return "unlimited";
   return Math.max(0, limit - emailsSent);
+}
+
+export function canViewClubSponsors(
+  tier: SubscriptionTier,
+  clubsViewed: string[],
+  clubId: string
+): boolean {
+  // If already viewed this club, always allow
+  if (clubsViewed.includes(clubId)) return true;
+
+  const limit = SUBSCRIPTION_LIMITS[tier].clubsWithSponsorsVisible;
+  // Unlimited
+  if (limit === -1) return true;
+  // Check if under limit
+  return clubsViewed.length < limit;
+}
+
+export function getRemainingClubViews(
+  tier: SubscriptionTier,
+  clubsViewedCount: number
+): number | "unlimited" {
+  const limit = SUBSCRIPTION_LIMITS[tier].clubsWithSponsorsVisible;
+  if (limit === -1) return "unlimited";
+  return Math.max(0, limit - clubsViewedCount);
 }
