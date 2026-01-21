@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { discoverContacts } from "@/services/contact-discovery";
+import { canRevealContact, getRemainingContactReveals, SubscriptionTier } from "@/lib/subscription";
 
 const discoverSchema = z.object({
   sponsorId: z.string(),
@@ -15,6 +16,33 @@ export async function POST(request: Request) {
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Check contact reveal limit
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        subscriptionTier: true,
+        contactReveals: true,
+      },
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const tier = user.subscriptionTier as SubscriptionTier;
+    if (!canRevealContact(tier, user.contactReveals)) {
+      const remaining = getRemainingContactReveals(tier, user.contactReveals);
+      return NextResponse.json(
+        {
+          error: "Contact reveal limit reached",
+          message: "You've reached your monthly limit for finding contacts. Upgrade your plan to reveal more contacts.",
+          remaining,
+          limitReached: true,
+        },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
@@ -70,6 +98,14 @@ export async function POST(request: Request) {
       }
     }
 
+    // Increment contact reveal counter
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: { contactReveals: { increment: 1 } },
+    });
+
+    const newRemaining = getRemainingContactReveals(tier, user.contactReveals + 1);
+
     return NextResponse.json({
       contacts: result.contacts,
       websiteData: result.websiteData,
@@ -78,6 +114,7 @@ export async function POST(request: Request) {
         email: sponsor.contactEmail,
         phone: sponsor.contactPhone,
       },
+      remaining: newRemaining,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

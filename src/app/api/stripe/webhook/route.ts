@@ -94,6 +94,7 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
     data: {
       subscriptionTier: tier,
       emailsSent: 0, // Reset email count on new subscription
+      contactReveals: 0, // Reset contact reveals on new subscription
     },
   });
 
@@ -182,10 +183,13 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   });
 
   if (user) {
-    // Reset monthly email count on successful renewal
+    // Reset monthly counts on successful renewal
     await prisma.user.update({
       where: { id: user.id },
-      data: { emailsSent: 0 },
+      data: {
+        emailsSent: 0,
+        contactReveals: 0,
+      },
     });
 
     // Record payment if payment_intent exists

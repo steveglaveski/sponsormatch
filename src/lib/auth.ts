@@ -111,20 +111,39 @@ export const authOptions: NextAuthOptions = {
 
       // For OAuth providers, check if this is a new user and apply IP restrictions
       if (account?.provider === "google" && user?.email) {
-        // Check if user already exists
-        const existingUser = await prisma.user.findUnique({
-          where: { email: user.email },
+        // Check if user already existed BEFORE this OAuth flow
+        // We can tell by checking if they have any linked accounts yet
+        const existingAccount = await prisma.account.findFirst({
+          where: {
+            userId: user.id,
+            provider: "google"
+          },
         });
 
-        // If user doesn't exist, this is a new signup - check IP restrictions
-        if (!existingUser) {
+        // If no existing google account, this is a new OAuth signup
+        // The adapter creates the user first, then links the account after signIn returns
+        // So if there's no account yet, this is the initial signup
+        if (!existingAccount) {
           const clientIp = await getClientIpFromHeaders();
           const ipCheck = await canSignupFromIp(clientIp);
 
           if (!ipCheck.allowed) {
             console.log("[NextAuth] Blocked OAuth signup from IP:", clientIp);
-            // Return false with error query param
-            return `/login?error=IPLimitReached`;
+
+            // Clean up the user record that the adapter just created
+            // since we're rejecting this signup
+            try {
+              await prisma.user.delete({
+                where: { id: user.id },
+              });
+              console.log("[NextAuth] Cleaned up user record after IP block:", user.id);
+            } catch (e) {
+              console.error("[NextAuth] Failed to cleanup user after IP block:", e);
+            }
+
+            // Return false to deny sign-in - this prevents OAuthCreateAccount error
+            // The error will show as AccessDenied, but login page handles this
+            return false;
           }
         }
       }

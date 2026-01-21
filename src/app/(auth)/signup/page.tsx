@@ -71,11 +71,6 @@ export default function SignupPage() {
     }
   }
 
-  async function handleGoogleSignIn() {
-    setIsLoading(true);
-    await signIn("google", { callbackUrl: "/dashboard" });
-  }
-
   return (
     <Card>
       <CardHeader className="text-center">
@@ -87,10 +82,11 @@ export default function SignupPage() {
 
       <CardContent className="space-y-4">
         <Button
+          type="button"
           variant="outline"
           className="w-full"
-          onClick={handleGoogleSignIn}
           disabled={isLoading}
+          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
         >
           <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
             <path
@@ -118,9 +114,7 @@ export default function SignupPage() {
             <span className="w-full border-t" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-2 text-neutral-500">
-              Or continue with
-            </span>
+            <span className="bg-white px-2 text-neutral-500">Or continue with email</span>
           </div>
         </div>
 

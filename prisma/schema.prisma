@@ -28,6 +28,7 @@ model User {
   // Subscription & usage
   subscriptionTier  SubscriptionTier @default(FREE)
   emailsSent        Int              @default(0)
+  contactReveals    Int              @default(0)   // Contact discoveries/reveals used this month
   clubsViewed       String[]         @default([])  // Club IDs where user has viewed sponsors
   stripeCustomerId  String?
 

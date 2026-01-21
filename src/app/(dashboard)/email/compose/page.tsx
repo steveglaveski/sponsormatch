@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,8 +38,18 @@ function EmailComposerContent() {
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  async function handleCopy() {
+    if (!subject && !body) return;
+
+    const emailContent = `Subject: ${subject}\n\n${body}`;
+    await navigator.clipboard.writeText(emailContent);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  }
 
   // Generate email on load if we have a sponsorId
   useEffect(() => {
@@ -239,6 +250,24 @@ function EmailComposerContent() {
                 {isGenerating ? "Regenerating..." : "Regenerate"}
               </Button>
               <Button
+                variant="outline"
+                onClick={handleCopy}
+                disabled={isGenerating || (!subject && !body)}
+                title="Copy to clipboard"
+              >
+                {isCopied ? (
+                  <>
+                    <Check className="h-4 w-4 mr-1" />
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4 mr-1" />
+                    Copy
+                  </>
+                )}
+              </Button>
+              <Button
                 onClick={handleSend}
                 disabled={
                   isGenerating ||
@@ -252,6 +281,9 @@ function EmailComposerContent() {
                 {isSending ? "Sending..." : "Send Email"}
               </Button>
             </div>
+            <p className="text-xs text-neutral-500 text-center">
+              Don&apos;t use Gmail? Click Copy to paste into your own email client.
+            </p>
           </CardContent>
         </Card>
 
