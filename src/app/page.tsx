@@ -69,15 +69,15 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="flex flex-wrap items-center justify-center gap-8 text-center md:gap-16">
             <div>
-              <div className="text-3xl font-bold text-blue-600">1,500+</div>
+              <div className="text-3xl font-bold text-blue-600">15,000+</div>
               <div className="text-sm text-neutral-600">Clubs to Search</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-blue-600">5,000+</div>
+              <div className="text-3xl font-bold text-blue-600">50,000+</div>
               <div className="text-sm text-neutral-600">Sponsors in Database</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-blue-600">$100M+</div>
+              <div className="text-3xl font-bold text-blue-600">$1B+</div>
               <div className="text-sm text-neutral-600">Sponsorship Budget</div>
             </div>
           </div>
