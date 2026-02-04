@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SearchResults } from "@/components/search-results";
+
+const SEARCH_CACHE_KEY = "sponsormatch_search_cache";
 
 interface SearchResult {
   searchId: string;
@@ -44,6 +46,15 @@ interface SearchResult {
   totalFound: number;
 }
 
+function loadCachedSearch(): { address: string; radius: string; results: SearchResult } | null {
+  try {
+    const cached = sessionStorage.getItem(SEARCH_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function SearchPage() {
   const router = useRouter();
   const [address, setAddress] = useState("");
@@ -51,6 +62,16 @@ export default function SearchPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<SearchResult | null>(null);
+
+  // Restore cached search results on mount (e.g. after pressing back)
+  useEffect(() => {
+    const cached = loadCachedSearch();
+    if (cached) {
+      setAddress(cached.address);
+      setRadius(cached.radius);
+      setResults(cached.results);
+    }
+  }, []);
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -76,6 +97,15 @@ export default function SearchPage() {
       }
 
       setResults(data);
+      try {
+        sessionStorage.setItem(SEARCH_CACHE_KEY, JSON.stringify({
+          address,
+          radius,
+          results: data,
+        }));
+      } catch {
+        // sessionStorage full or unavailable — not critical
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
