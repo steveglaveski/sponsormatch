@@ -33,7 +33,7 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
     error: "/login",
   },
-  debug: true,
+  debug: process.env.NODE_ENV === "development",
   cookies: {
     state: {
       name: `${cookiePrefix}next-auth.state`,
