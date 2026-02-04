@@ -288,20 +288,31 @@ export function inferSportType(name: string, types: string[]): string | null {
   const nameLower = name.toLowerCase();
 
   const sportPatterns: Array<{ pattern: RegExp; sport: string }> = [
-    { pattern: /\bafl\b|aussie rules|australian football|\bsoccer\b|football club/i, sport: "Football" },
+    // AU patterns
+    { pattern: /\bafl\b|aussie rules|australian football/i, sport: "Football" },
     { pattern: /\brugby league\b|league club/i, sport: "Rugby League" },
     { pattern: /\brugby union\b|rugby club/i, sport: "Rugby Union" },
     { pattern: /\bcricket\b/i, sport: "Cricket" },
+    { pattern: /\bnetball\b/i, sport: "Netball" },
+    { pattern: /\bsurf\b|slsc\b|surf life/i, sport: "Surf" },
+    // US patterns
+    { pattern: /\bamerican football\b|pop warner|youth football|gridiron/i, sport: "American Football" },
+    { pattern: /\blacrosse\b/i, sport: "Lacrosse" },
+    { pattern: /\bice hockey\b/i, sport: "Ice Hockey" },
+    { pattern: /\bfield hockey\b/i, sport: "Field Hockey" },
+    { pattern: /\bwrestling\b/i, sport: "Wrestling" },
+    { pattern: /\bcheer(?:leading)?\b/i, sport: "Cheerleading" },
+    { pattern: /\blittle league\b/i, sport: "Baseball" },
+    // Shared / universal patterns
+    { pattern: /\bsoccer\b|football club/i, sport: "Football" },
     { pattern: /\btennis\b/i, sport: "Tennis" },
     { pattern: /\bbasketball\b/i, sport: "Basketball" },
-    { pattern: /\bnetball\b/i, sport: "Netball" },
     { pattern: /\bhockey\b/i, sport: "Hockey" },
     { pattern: /\bswim/i, sport: "Swimming" },
     { pattern: /\bathletic/i, sport: "Athletics" },
     { pattern: /\bgym/i, sport: "Gymnastics" },
     { pattern: /\bbowl/i, sport: "Bowling" },
     { pattern: /\bgolf\b/i, sport: "Golf" },
-    { pattern: /\bsurf\b|slsc\b|surf life/i, sport: "Surf" },
     { pattern: /\bvolleyball\b/i, sport: "Volleyball" },
     { pattern: /\bbaseball\b/i, sport: "Baseball" },
     { pattern: /\bsoftball\b/i, sport: "Softball" },
@@ -320,7 +331,7 @@ export function inferSportType(name: string, types: string[]): string | null {
   }
 
   // Check if it's a general sports club
-  if (/sports? club|recreation|rsl/i.test(nameLower)) {
+  if (/sports? club|recreation|rsl|ymca|boys and girls club/i.test(nameLower)) {
     return "Multi-Sport";
   }
 

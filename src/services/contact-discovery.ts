@@ -347,13 +347,21 @@ function extractEmailsFromHTML(
 }
 
 /**
- * Extract Australian phone numbers from HTML
+ * Extract phone numbers from HTML (supports AU and US formats)
  */
 function extractPhoneFromHTML(html: string): string | undefined {
-  const phoneRegex =
-    /(?:\+61|0)[2-478](?:[ -]?\d){8}|(?:1300|1800|13)(?:[ -]?\d){6}/g;
-  const phones = html.match(phoneRegex) || [];
-  return phones[0];
+  const phonePatterns = [
+    // Australian: +61, 04xx, 02-08, 1300/1800
+    /(?:\+61|0)[2-478](?:[ -]?\d){8}|(?:1300|1800|13)(?:[ -]?\d){6}/g,
+    // US/Canada: +1, (xxx) xxx-xxxx, xxx-xxx-xxxx
+    /(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
+  ];
+
+  for (const regex of phonePatterns) {
+    const phones = html.match(regex) || [];
+    if (phones[0]) return phones[0];
+  }
+  return undefined;
 }
 
 /**
@@ -593,6 +601,7 @@ function extractDomain(website?: string): string | null {
 
 /**
  * Guess domain from company name
+ * Uses .com as the default TLD since it works globally
  */
 function guessDomain(companyName: string): string | null {
   const decoded = cleanAndDecodeText(companyName);
@@ -600,13 +609,13 @@ function guessDomain(companyName: string): string | null {
   const cleaned = decoded
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+(pty|ltd|limited|inc|corp|co|australia|aus)$/i, "")
+    .replace(/\s+(pty|ltd|limited|inc|corp|co|llc|llp|australia|aus)$/i, "")
     .replace(/\s+/g, "")
     .trim();
 
   if (cleaned.length < 3) return null;
 
-  return `${cleaned}.com.au`;
+  return `${cleaned}.com`;
 }
 
 /**

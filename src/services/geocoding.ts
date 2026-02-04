@@ -1,4 +1,4 @@
-import { AUSTRALIAN_STATES } from "@/lib/constants";
+import { SUPPORTED_COUNTRIES } from "@/lib/constants";
 
 export interface GeocodingResult {
   formattedAddress: string;
@@ -7,6 +7,7 @@ export interface GeocodingResult {
   suburb: string;
   state: string;
   postcode: string;
+  country: string;
 }
 
 interface GoogleGeocodingResponse {
@@ -36,8 +37,8 @@ export class GeocodingError extends Error {
 }
 
 /**
- * Geocode an Australian address using Google Maps Geocoding API
- * Returns coordinates and parsed address components
+ * Geocode an address using Google Maps Geocoding API
+ * Supports Australian and US addresses
  */
 export async function geocodeAddress(
   address: string
@@ -51,23 +52,16 @@ export async function geocodeAddress(
     );
   }
 
-  // Append Australia to help with geocoding accuracy
-  const searchAddress = address.toLowerCase().includes("australia")
-    ? address
-    : `${address}, Australia`;
-
   const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-  url.searchParams.set("address", searchAddress);
+  url.searchParams.set("address", address);
   url.searchParams.set("key", apiKey);
-  // Restrict to Australia
-  url.searchParams.set("components", "country:AU");
 
   const response = await fetch(url.toString());
   const data: GoogleGeocodingResponse = await response.json();
 
   if (data.status === "ZERO_RESULTS") {
     throw new GeocodingError(
-      "Address not found. Please enter a valid Australian address.",
+      "Address not found. Please enter a valid address.",
       "NOT_FOUND"
     );
   }
@@ -93,21 +87,14 @@ export async function geocodeAddress(
       ?.short_name || "";
   const postcode =
     components.find((c) => c.types.includes("postal_code"))?.long_name || "";
+  const country =
+    components.find((c) => c.types.includes("country"))?.short_name || "";
 
-  // Validate it's actually in Australia
-  const country = components.find((c) => c.types.includes("country"));
-  if (country?.short_name !== "AU") {
+  // Validate it's in a supported country
+  if (!SUPPORTED_COUNTRIES.includes(country as (typeof SUPPORTED_COUNTRIES)[number])) {
     throw new GeocodingError(
-      "Please enter an Australian address",
-      "NOT_AUSTRALIAN"
-    );
-  }
-
-  // Validate state is a known Australian state
-  if (state && !AUSTRALIAN_STATES.includes(state as (typeof AUSTRALIAN_STATES)[number])) {
-    throw new GeocodingError(
-      "Invalid Australian state",
-      "INVALID_STATE"
+      "We currently support Australia and the United States. Please enter an address in one of these countries.",
+      "UNSUPPORTED_COUNTRY"
     );
   }
 
@@ -118,6 +105,7 @@ export async function geocodeAddress(
     suburb,
     state,
     postcode,
+    country,
   };
 }
 

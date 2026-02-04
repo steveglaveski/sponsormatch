@@ -37,7 +37,7 @@ export default function HomePage() {
       <section className="py-20 md:py-32">
         <div className="container mx-auto px-4 text-center">
           <Badge className="mb-4" variant="secondary">
-            For Australian Sports Clubs
+            For Sports Clubs in AU &amp; US
           </Badge>
           <h1 className="mx-auto max-w-4xl text-4xl font-bold tracking-tight md:text-6xl">
             Find sponsors for your
@@ -206,7 +206,7 @@ export default function HomePage() {
               </CardHeader>
               <CardContent>
                 <p className="text-neutral-600">
-                  AFL, soccer, cricket, tennis, netball, and 20+ other sports supported.
+                  AFL, soccer, baseball, basketball, lacrosse, ice hockey, and 30+ other sports supported.
                 </p>
               </CardContent>
             </Card>
@@ -469,14 +469,14 @@ export default function HomePage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">
-                  Is this only for Australian clubs?
+                  Which countries are supported?
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-neutral-600">
-                  Yes, SponsorMatch is currently designed for Australian sports clubs.
-                  We validate addresses to ensure they&apos;re within Australia and
-                  our database focuses on Australian businesses.
+                  SponsorMatch supports sports clubs in Australia and the United States.
+                  Enter any address in either country and we&apos;ll find nearby clubs
+                  and their sponsors.
                 </p>
               </CardContent>
             </Card>
@@ -520,9 +520,9 @@ export default function HomePage() {
               </CardHeader>
               <CardContent>
                 <p className="text-neutral-600">
-                  We support 25+ sports including AFL, soccer, rugby, cricket, tennis,
-                  basketball, netball, hockey, swimming, athletics, and more. If there&apos;s
-                  a club with a website, we can find their sponsors.
+                  We support 30+ sports including AFL, soccer, rugby, cricket, baseball,
+                  basketball, American football, lacrosse, ice hockey, tennis, and more.
+                  If there&apos;s a club with a website, we can find their sponsors.
                 </p>
               </CardContent>
             </Card>
@@ -537,7 +537,7 @@ export default function HomePage() {
             Ready to find your next sponsor?
           </h2>
           <p className="mt-4 text-lg text-neutral-600">
-            Join hundreds of Australian sports clubs using SponsorMatch
+            Join hundreds of sports clubs using SponsorMatch
           </p>
           <Button size="lg" className="mt-8" asChild>
             <Link href="/signup">Get Started Free</Link>
@@ -555,7 +555,7 @@ export default function HomePage() {
             <div>
               <div className="text-xl font-bold text-blue-600">SponsorMatch</div>
               <p className="mt-2 text-sm text-neutral-600">
-                Helping Australian sports clubs find local sponsors.
+                Helping sports clubs find local sponsors.
               </p>
             </div>
             <div>
@@ -582,7 +582,7 @@ export default function HomePage() {
             </div>
           </div>
           <div className="mt-12 border-t pt-8 text-center text-sm text-neutral-500">
-            &copy; {new Date().getFullYear()} SponsorMatch Australia. All rights reserved.
+            &copy; {new Date().getFullYear()} SponsorMatch. All rights reserved.
           </div>
         </div>
       </footer>
